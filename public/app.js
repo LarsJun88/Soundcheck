@@ -191,8 +191,6 @@ function renderProfile() {
   const roleText = profile.role === "main_admin" ? "메인 관리자" : "밴드 관리자";
   elements.profileChip.textContent = `${profile.displayName} · ${roleText}`;
   elements.memberDescription.textContent = profile.role === "main_admin" ? "모든 밴드의 일정을 확인하고, 필요하면 대리 예약과 취소를 할 수 있습니다." : "내 밴드의 합주 시간을 예약하거나 취소할 수 있습니다.";
-  elements.telegramStatus.textContent = profile.telegramChatId ? "텔레그램 연결이 완료되었습니다. 예약 전 알림을 보내드릴게요." : "텔레그램 봇을 연결하면 예약 1일 전과 1시간 전에 알려드립니다.";
-  elements.telegramConnectButton.textContent = profile.telegramChatId ? "텔레그램 다시 연결" : "텔레그램 연결";
   renderBands();
   renderMyReservations();
   renderNotices();
@@ -370,15 +368,6 @@ async function handleSettings(event) {
   }
 }
 
-async function handleTelegramConnect() {
-  try {
-    const result = await call("createTelegramLink", {});
-    window.open(result.data.url, "_blank", "noopener");
-    showToast("텔레그램에서 시작 버튼을 눌러 연결을 완료해 주세요. 링크는 15분간 유효합니다.");
-  } catch (error) {
-    showToast(errorMessage(error), true);
-  }
-}
 
 function bindEvents() {
   elements.openAuthButton.addEventListener("click", openAuth);
@@ -395,7 +384,6 @@ function bindEvents() {
   elements.bandForm.addEventListener("submit", handleBandCreate);
   elements.announcementForm.addEventListener("submit", handleAnnouncement);
   elements.settingsForm.addEventListener("submit", handleSettings);
-  elements.telegramConnectButton.addEventListener("click", handleTelegramConnect);
   elements.signOutButton.addEventListener("click", () => signOut(auth));
   elements.weekStart.addEventListener("change", () => { if (state.profile) subscribeToAppData(); renderCalendar(); });
   elements.startHour.addEventListener("change", () => {

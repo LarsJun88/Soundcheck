@@ -13,8 +13,7 @@ service cloud.firestore {
       return signedIn() && profile().data.role == 'main_admin';
     }
 
-    // A profile is only written by trusted callable Cloud Functions. It includes
-    // the role and Telegram chat ID, neither of which must be client-editable.
+    // A profile is only written by trusted callable Cloud Functions. It includes\r?\n    // the role and band membership, neither of which must be client-editable.
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isMainAdmin());
       allow list: if isMainAdmin();
@@ -43,13 +42,6 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    match /telegramLinks/{linkId} {
-      allow read, write: if false;
-    }
-
-    match /notificationClaims/{claimId} {
-      allow read, write: if false;
-    }
 
     // Notices are public so everyone can read them before logging in. Only the
     // main administrator can publish, edit, or remove a notice.

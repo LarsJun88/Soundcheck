@@ -1,10 +1,8 @@
 const { randomUUID } = require("crypto");
 const admin = require("firebase-admin");
-const { logger } = require("firebase-functions");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
-const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -13,9 +11,6 @@ const { FieldValue, Timestamp } = admin.firestore;
 setGlobalOptions({ region: "asia-northeast3", maxInstances: 10 });
 
 const BOOTSTRAP_CODE = defineSecret("BOOTSTRAP_CODE");
-const TELEGRAM_BOT_TOKEN = defineSecret("TELEGRAM_BOT_TOKEN");
-const TELEGRAM_BOT_USERNAME = defineSecret("TELEGRAM_BOT_USERNAME");
-const TELEGRAM_WEBHOOK_SECRET = defineSecret("TELEGRAM_WEBHOOK_SECRET");
 
 const COLORS = ["#8B5CF6", "#0EA5E9", "#10B981", "#F97316", "#EC4899", "#EAB308"];
 const DEFAULT_ROOM_SETTINGS = { openHour: 9, closeHour: 23, slotMinutes: 60 };
@@ -98,21 +93,6 @@ function validateReservationInput(data) {
 
 function displayTime(hour) {
   return `${String(hour).padStart(2, "0")}:00`;
-}
-
-async function sendTelegramMessage(chatId, text) {
-  const token = TELEGRAM_BOT_TOKEN.value();
-  if (!token) {
-    throw new Error("TELEGRAM_BOT_TOKEN secret is not configured.");
-  }
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
-  if (!response.ok) {
-    throw new Error(`Telegram sendMessage failed (${response.status}): ${await response.text()}`);
-  }
 }
 
 exports.bootstrapMainAdmin = onCall(
@@ -338,128 +318,3 @@ exports.cancelReservation = onCall(async (request) => {
 
   return { cancelled: true };
 });
-
-exports.createTelegramLink = onCall(
-  { secrets: [TELEGRAM_BOT_USERNAME] },
-  async (request) => {
-    const auth = requireAuth(request);
-    await getProfile(auth.uid);
-    const botUsername = String(TELEGRAM_BOT_USERNAME.value() || "").replace(/^@/, "").trim();
-    if (!botUsername) {
-      throw new HttpsError("failed-precondition", "텔레그램 봇이 아직 설정되지 않았습니다.");
-    }
-    const token = randomUUID().replace(/-/g, "");
-    await db.collection("telegramLinks").doc(token).set({
-      uid: auth.uid,
-      expiresAt: Timestamp.fromDate(new Date(Date.now() + 15 * 60 * 1000)),
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    return { url: `https://t.me/${botUsername}?start=${token}`, expiresInMinutes: 15 };
-  },
-);
-
-exports.telegramWebhook = onRequest(
-  { secrets: [TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET] },
-  async (request, response) => {
-    const expectedSecret = TELEGRAM_WEBHOOK_SECRET.value();
-    if (expectedSecret && request.get("X-Telegram-Bot-Api-Secret-Token") !== expectedSecret) {
-      response.status(403).json({ ok: false });
-      return;
-    }
-    const message = request.body?.message;
-    const text = String(message?.text || "");
-    const match = text.match(/^\/start(?:@\w+)?\s+([A-Za-z0-9]{32})/);
-    const chatId = message?.chat?.id;
-    if (!match || !chatId) {
-      response.status(200).json({ ok: true });
-      return;
-    }
-
-    const linkRef = db.collection("telegramLinks").doc(match[1]);
-    let linked = false;
-    await db.runTransaction(async (transaction) => {
-      const link = await transaction.get(linkRef);
-      if (!link.exists || link.data().expiresAt.toDate() < new Date()) return;
-      transaction.update(db.collection("users").doc(link.data().uid), {
-        telegramChatId: String(chatId),
-        telegramLinkedAt: FieldValue.serverTimestamp(),
-      });
-      transaction.delete(linkRef);
-      linked = true;
-    });
-
-    if (linked) {
-      try {
-        await sendTelegramMessage(chatId, "합주실 예약 알림이 연결되었습니다. 예약 1일 전과 1시간 전에 알려드릴게요.");
-      } catch (error) {
-        logger.error("Telegram connection confirmation failed", error);
-      }
-    }
-    response.status(200).json({ ok: true });
-  },
-);
-
-async function claimReminder(reservationId, type) {
-  const reference = db.collection("notificationClaims").doc(`${reservationId}_${type}`);
-  let claimed = false;
-  await db.runTransaction(async (transaction) => {
-    const existing = await transaction.get(reference);
-    if (existing.exists) return;
-    transaction.set(reference, { reservationId, type, claimedAt: FieldValue.serverTimestamp() });
-    claimed = true;
-  });
-  return claimed;
-}
-
-exports.sendReservationReminders = onSchedule(
-  {
-    schedule: "every 5 minutes",
-    timeZone: "Asia/Seoul",
-    secrets: [TELEGRAM_BOT_TOKEN],
-  },
-  async () => {
-    const now = Date.now();
-    const windows = [
-      { type: "day", minMinutes: 23 * 60 + 45, maxMinutes: 24 * 60 + 15, label: "내일" },
-      { type: "hour", minMinutes: 45, maxMinutes: 75, label: "1시간 후" },
-    ];
-
-    for (const window of windows) {
-      const startAt = Timestamp.fromMillis(now + window.minMinutes * 60 * 1000);
-      const endAt = Timestamp.fromMillis(now + window.maxMinutes * 60 * 1000);
-      const snapshot = await db.collection("reservations")
-        .where("startAt", ">=", startAt)
-        .where("startAt", "<=", endAt)
-        .get();
-
-      for (const document of snapshot.docs) {
-        const reservation = document.data();
-        if (reservation.status !== "confirmed") continue;
-        const band = await db.collection("bands").doc(reservation.bandId).get();
-        if (!band.exists || !band.data().managerUid) continue;
-        const manager = await db.collection("users").doc(band.data().managerUid).get();
-        const chatId = manager.exists ? manager.data().telegramChatId : null;
-        if (!chatId || !(await claimReminder(document.id, window.type))) continue;
-
-        const text = [
-          `🎸 합주실 예약 ${window.label} 알림`,
-          `${reservation.bandName} · ${reservation.date}`,
-          `${displayTime(reservation.startHour)}–${displayTime(reservation.endHour)} 합주 예정입니다.`,
-        ].join("\n");
-        try {
-          await sendTelegramMessage(chatId, text);
-          await db.collection("notificationClaims").doc(`${document.id}_${window.type}`).update({
-            sentAt: FieldValue.serverTimestamp(),
-            status: "sent",
-          });
-        } catch (error) {
-          logger.error("Reservation reminder could not be delivered", { reservationId: document.id, type: window.type, error });
-          await db.collection("notificationClaims").doc(`${document.id}_${window.type}`).update({
-            status: "failed",
-            failedAt: FieldValue.serverTimestamp(),
-          });
-        }
-      }
-    }
-  },
-);

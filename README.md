@@ -10,7 +10,6 @@
 - 초대받은 이메일로만 코드를 사용해 밴드 관리자 권한 활성화
 - 1시간 단위 예약, 운영 시간 설정, 동시에 들어온 예약의 서버 측 충돌 차단
 - 밴드 관리자는 자기 밴드 예약만 생성/취소, 메인 관리자는 전체 관리
-- 텔레그램 봇 연결 후 예약 1일 전·1시간 전 자동 알림
 - Firestore Security Rules로 브라우저의 직접 예약/권한 변경 차단
 
 ## 시작 전 준비
@@ -18,7 +17,7 @@
 1. [Firebase Console](https://console.firebase.google.com/)에서 프로젝트와 **Web app**을 하나 만듭니다.
 2. **Authentication → Sign-in method → Email/Password**를 활성화합니다.
 3. **Firestore Database**를 Production mode로 생성합니다. 리전은 Functions와 가까운 `asia-northeast3`(서울)을 권장합니다.
-4. Firebase 프로젝트는 Functions와 Cloud Scheduler를 쓰므로 Blaze(종량제) 요금제가 필요합니다. 작은 합주실 사용량에서는 Scheduler 1개와 Functions 호출 비용이 매우 작습니다.
+4. Firebase 프로젝트는 Cloud Functions를 쓰므로 Blaze(종량제) 요금제가 필요합니다. 작은 합주실 사용량에서는 Scheduler 1개와 Functions 호출 비용이 매우 작습니다.
 5. 로컬에 [Node.js 20](https://nodejs.org/)와 Firebase CLI를 설치하고 로그인합니다.
 
 ```bash
@@ -52,25 +51,6 @@ firebase functions:secrets:set BOOTSTRAP_CODE
 
 그 뒤 운영 관리에서 밴드 이름과 관리자 이메일을 등록하면 10자리 초대 코드가 나옵니다. 그 코드를 해당 관리자에게 전달하면, 관리자가 자신의 이메일과 원하는 비밀번호로 계정을 생성해 활성화할 수 있습니다.
 
-## 텔레그램 알림 설정
-
-1. Telegram의 [@BotFather](https://t.me/BotFather)에서 봇을 만들고 토큰과 봇 사용자명을 확인합니다.
-2. 웹훅 검증용으로 충분히 긴 임의 문자열을 하나 만듭니다.
-3. 아래 세 Firebase Secret을 설정합니다. 봇 사용자명은 `@` 없이 입력합니다.
-
-```bash
-firebase functions:secrets:set TELEGRAM_BOT_TOKEN
-firebase functions:secrets:set TELEGRAM_BOT_USERNAME
-firebase functions:secrets:set TELEGRAM_WEBHOOK_SECRET
-```
-
-4. 먼저 배포한 뒤, Functions 목록에서 `telegramWebhook`의 HTTPS URL을 확인합니다. 아래 형식으로 Telegram 웹훅을 등록합니다. `FUNCTION_URL`, `BOT_TOKEN`, `WEBHOOK_SECRET`을 실제 값으로 대체하세요.
-
-```bash
-curl -X POST "https://api.telegram.org/botBOT_TOKEN/setWebhook" -d "url=FUNCTION_URL" -d "secret_token=WEBHOOK_SECRET"
-```
-
-각 밴드 관리자는 로그인한 뒤 **텔레그램 연결**을 누르고 열린 봇에서 Start를 누릅니다. 연결용 URL은 15분 뒤 만료됩니다. 알림은 5분마다 확인하며, 같은 예약·같은 시점에는 중복 발송하지 않습니다.
 
 ## 배포와 GitHub
 
@@ -99,13 +79,13 @@ Firebase Emulator를 사용하면 실제 데이터와 알림을 건드리지 않
 firebase emulators:start --only hosting,functions,firestore
 ```
 
-Cloud Scheduler 예약 알림과 Telegram webhook은 실제 Functions 배포 환경에서 확인하세요.
+Functions 배포 후 로그인, 밴드 초대, 예약 흐름을 확인하세요.
 
 ## 데이터 구조
 
 | 컬렉션 | 역할 |
 | --- | --- |
-| `users` | 역할, 밴드 소속, Telegram chat ID (서버만 작성) |
+| `users` | 역할과 밴드 소속 (서버만 작성) |
 | `bands` | 밴드와 담당 관리자 |
 | `reservations` | 확정/취소된 예약 기록 |
 | `scheduleSlots` | 시간별 잠금 문서 — 겹침 방지용 |
