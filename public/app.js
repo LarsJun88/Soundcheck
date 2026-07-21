@@ -42,6 +42,38 @@ const db = getFirestore(app);
 const functions = getFunctions(app, "asia-northeast3");
 const call = (name, data) => httpsCallable(functions, name)(data);
 
+let deferredInstallPrompt;
+
+function setupAppInstall() {
+  const button = elements.installAppButton;
+  if (!button || window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) return;
+
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIos) {
+    button.classList.remove("hidden");
+    button.addEventListener("click", () => showToast("Safari 공유 버튼에서 ‘홈 화면에 추가’를 선택하세요."));
+    return;
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    button.classList.remove("hidden");
+  });
+
+  button.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    button.classList.add("hidden");
+  });
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}), { once: true });
+}
 function pad(value) {
   return String(value).padStart(2, "0");
 }
@@ -424,6 +456,8 @@ function initialise() {
   elements.reservationDate.min = today;
   applyRoomToControls();
   bindEvents();
+  setupAppInstall();
+  registerServiceWorker();
   if (configMissing) {
     elements.noticeList.innerHTML = "<p class=\"empty-message\">Firebase 설정 후 공지사항과 시간표가 표시됩니다.</p>";
     elements.noticeCount.textContent = "설정 필요";

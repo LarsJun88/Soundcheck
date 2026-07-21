@@ -1,0 +1,15 @@
+{
+  "name": "Soundcheck · 합주실 예약",
+  "short_name": "Soundcheck",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101114",
+  "theme_color": "#101114",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "./icons/soundcheck-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/soundcheck-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -3,13 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#171526" />
+    <meta name="theme-color" content="#101114" />
+    <meta name="application-name" content="Soundcheck" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="밴드 합주실 예약 및 공지 확인 서비스" />
     <title>Soundcheck · 합주실 예약</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/soundcheck.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./rock-theme.css" />
   </head>
   <body>
     <div class="noise" aria-hidden="true"></div>
@@ -20,6 +28,7 @@
       </a>
       <div class="topbar-actions">
         <span id="profileChip" class="profile-chip hidden"></span>
+        <button id="installAppButton" class="button button-install hidden" type="button">홈 화면에 추가</button>
         <button id="openAuthButton" class="button button-dark">로그인 / 시작</button>
         <button id="signOutButton" class="text-button hidden">로그아웃</button>
       </div>
