@@ -16,6 +16,7 @@ const COLORS = ["#8B5CF6", "#0EA5E9", "#10B981", "#F97316", "#EC4899", "#EAB308"
 const DEFAULT_ROOM_SETTINGS = { openHour: 9, closeHour: 23, slotMinutes: 60 };
 const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
 const INTERNAL_EMAIL_DOMAIN = "@id.soundcheck.local";
+const MAX_LOGO_DATA_URL_LENGTH = 350000;
 
 function badRequest(message) {
   throw new HttpsError("invalid-argument", message);
@@ -178,6 +179,48 @@ exports.createBand = onCall(async (request) => {
   });
 
   return { bandId: bandRef.id, code, expiresAt: expiresAt.toDate().toISOString() };
+});
+
+exports.listBandDirectory = onCall(async () => {
+  const snapshot = await db.collection("bands").where("active", "==", true).get();
+  const bands = snapshot.docs.map((item) => {
+    const band = item.data();
+    return {
+      id: item.id,
+      name: String(band.name || "").slice(0, 40),
+      color: String(band.color || "#8B5CF6"),
+      logoDataUrl: typeof band.logoDataUrl === "string" ? band.logoDataUrl : "",
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  return { bands };
+});
+
+exports.updateBandLogo = onCall(async (request) => {
+  const { auth } = await requireMainAdmin(request);
+  const bandId = String(request.data?.bandId || "").trim();
+  const logoDataUrl = String(request.data?.logoDataUrl || "");
+  if (!bandId) badRequest("로고를 변경할 밴드를 선택해 주세요.");
+  if (logoDataUrl && (
+    logoDataUrl.length > MAX_LOGO_DATA_URL_LENGTH
+    || !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logoDataUrl)
+  )) {
+    badRequest("로고는 PNG·JPG·WebP 형식의 작은 이미지로 등록해 주세요.");
+  }
+
+  const bandRef = db.collection("bands").doc(bandId);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(bandRef);
+    if (!snapshot.exists || !snapshot.data().active) {
+      throw new HttpsError("not-found", "로고를 변경할 밴드를 찾을 수 없습니다.");
+    }
+    transaction.update(bandRef, {
+      logoDataUrl,
+      logoUpdatedAt: FieldValue.serverTimestamp(),
+      logoUpdatedBy: auth.uid,
+    });
+  });
+
+  return { bandId, logoDataUrl };
 });
 
 exports.claimBandInvite = onCall(async (request) => {

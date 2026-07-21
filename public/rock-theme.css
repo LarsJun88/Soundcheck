@@ -77,6 +77,14 @@ h1 em { color: var(--acid); font-style: normal; text-shadow: 3px 3px 0 var(--sig
 .notice-delete { align-self: start; color: var(--danger); }
 .empty-message { margin: 0; padding: 22px 3px; color: var(--muted); font-size: 14px; }
 
+.bands-section { padding-bottom: 112px; }
+.band-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 220px)); gap: 16px; }
+.band-directory > .empty-message { grid-column: 1 / -1; width: 100%; border-top: 3px solid var(--ink); }
+.band-card { position: relative; min-height: 214px; padding: 21px 17px 18px; overflow: hidden; border: 1px solid var(--ink); border-top: 5px solid var(--band-color, var(--signal)); background: var(--cream); box-shadow: 5px 5px 0 rgba(16,17,20,.15); }
+.band-card::after { content: ""; position: absolute; right: -38px; bottom: -51px; width: 105px; height: 105px; border: 15px solid var(--band-color, var(--signal)); border-radius: 50%; opacity: .1; }
+.band-card-logo, .band-logo-fallback { position: relative; z-index: 1; width: 112px; height: 112px; display: grid; place-items: center; object-fit: contain; border: 1px solid var(--line); background: white; }
+.band-logo-fallback { border-color: var(--band-color, var(--signal)); color: var(--ink); background: color-mix(in srgb, var(--band-color, var(--signal)) 22%, white); font: 800 39px/1 "Montserrat", "Gowun Dodum", sans-serif; }
+.band-card h3 { position: relative; z-index: 1; margin: 15px 0 0; font: 800 16px/1.25 "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -.5px; overflow-wrap: anywhere; }
 .schedule-section { position: relative; padding: 98px 0 110px; overflow: hidden; color: #fbf9f3; background: var(--ink); }
 .schedule-section::before { content: ""; position: absolute; inset: 0; opacity: .25; background: linear-gradient(145deg, transparent 0 58%, rgba(216,255,69,.16) 58% 59%, transparent 59% 100%); pointer-events: none; }
 .schedule-section .page-width { position: relative; }
@@ -88,15 +96,17 @@ h1 em { color: var(--acid); font-style: normal; text-shadow: 3px 3px 0 var(--sig
 .legend-free { margin-left: 0; }.legend-booked { background: var(--acid); box-shadow: 0 0 0 3px rgba(216,255,69,.12); }
 .calendar-wrap { overflow-x: auto; border: 1px solid #4b4f5a; background: #191b22; box-shadow: 8px 8px 0 rgba(236,84,67,.72); scrollbar-color: var(--acid) #252832; }
 .calendar { min-width: 800px; display: grid; grid-template-columns: 64px repeat(7, minmax(105px, 1fr)); }
-.calendar > div { min-height: 43px; border-right: 1px solid #343741; border-bottom: 1px solid #343741; }
+.calendar > div { min-height: 50px; border-right: 1px solid #343741; border-bottom: 1px solid #343741; }
 .calendar .calendar-corner, .day-head { background: #252832; }
 .day-head { padding: 11px 9px; }.day-head span { display: block; color: rgba(255,255,255,.48); font: 10px "DM Mono", monospace; }.day-head strong { font: 700 14px "Montserrat", sans-serif; }.day-head.today strong { color: var(--acid); }
 .time-label { padding: 12px 9px; color: rgba(255,255,255,.48); font: 10px "DM Mono", monospace; background: #20222b; }
-.calendar-slot { position: relative; min-height: 43px; padding: 3px; background: #191b22; }.calendar-slot:hover { background: #282b35; }
-.calendar-booking { width: 100%; min-height: 35px; overflow: hidden; padding: 4px 5px; border: 0; border-left: 3px solid var(--acid); color: white; background: rgba(255,255,255,.1); font: 600 10px/1.2 "Gowun Dodum", sans-serif; text-align: left; }.calendar-booking:hover { background: rgba(236,84,67,.32); }
-.calendar-booking span { display: block; opacity: .7; font: 9px "DM Mono", monospace; }
+.calendar-slot { position: relative; min-height: 50px; padding: 3px; background: #191b22; }.calendar-slot:hover { background: #282b35; }
+.calendar-booking { width: 100%; min-height: 42px; overflow: hidden; padding: 5px 6px; border: 0; border-left: 3px solid var(--acid); color: white; background: rgba(255,255,255,.1); font: 700 13px/1.2 "Gowun Dodum", sans-serif; text-align: left; }.calendar-booking:hover { background: rgba(236,84,67,.32); }
+.calendar-booking span { display: block; opacity: .72; font: 9.5px "DM Mono", monospace; }
 
-.member-area { padding: 106px 0 82px; }.member-intro { margin-bottom: 28px; }.member-intro > p:last-child { margin: 8px 0 0; color: var(--muted); }
+.member-area { padding: 106px 0 82px; }
+.member-area-priority { padding-top: 48px; padding-bottom: 58px; }
+.member-area-priority .reservation-panel { border-top-color: var(--acid); } { margin-bottom: 28px; }.member-intro > p:last-child { margin: 8px 0 0; color: var(--muted); }
 .manager-grid, .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 19px; }.admin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .panel { padding: 25px; border: 1px solid var(--ink); border-top: 5px solid var(--signal); background: var(--cream); box-shadow: 6px 6px 0 rgba(16,17,20,.13); }.panel:nth-child(even) { border-top-color: var(--acid); }
 .panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 20px; }.panel-heading h3 { margin: 0; font: 700 17px "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -.7px; }
@@ -105,6 +115,13 @@ input, select, textarea { width: 100%; margin-top: 5px; padding: 11px; border: 1
 textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }.form-submit { width: 100%; margin-top: 4px; }.form-help { margin: 11px 0 0; color: var(--muted); font-size: 11px; }
 .my-reservation-list { display: grid; gap: 8px; }.my-reservation { padding: 13px; border-left: 4px solid var(--reservation-color, var(--signal)); background: var(--paper); }.my-reservation strong { display: block; font: 700 13px "Montserrat", sans-serif; }.my-reservation p { margin: 2px 0 8px; color: var(--muted); font: 12px "DM Mono", monospace; }.cancel-button { padding: 0; border: 0; color: var(--danger); background: none; font-size: 12px; text-decoration: underline; }
 .admin-area { padding: 30px 0 118px; }.admin-area .section-heading { margin-bottom: 28px; }.settings-panel { border-top-color: var(--ink); background: var(--acid); }.invite-result { margin-top: 21px; padding: 19px 21px; border: 1px solid var(--ink); border-left: 7px solid var(--signal); background: #fff8d8; }.invite-result strong { font: 700 19px "DM Mono", monospace; }.invite-result p { margin: 5px 0 0; font-size: 13px; }
+.band-logo-panel { grid-column: 1 / -1; }
+.band-logo-editor { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; gap: 24px; }
+.band-logo-preview { width: 160px; height: 160px; display: grid; place-items: center; overflow: hidden; border: 1px dashed #9b9588; color: var(--muted); background: var(--paper); font: 500 10px "DM Mono", monospace; }
+.band-logo-preview-image { width: 100%; height: 100%; display: grid; place-items: center; object-fit: contain; background: white; }
+.band-logo-preview .band-logo-fallback { width: 100%; height: 100%; border: 0; font-size: 48px; }
+.band-logo-actions { margin-top: 18px; display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.band-logo-actions .button-ghost { min-width: 118px; color: var(--ink); border-color: var(--ink); }
 .footer { padding: 30px 0 max(36px, env(safe-area-inset-bottom)); display: flex; justify-content: space-between; color: rgba(255,255,255,.58); background: var(--ink); font: 10px "DM Mono", monospace; letter-spacing: 1.1px; }.footer p { margin: 0; }
 
  dialog { width: min(460px, calc(100% - 28px)); max-height: min(730px, calc(100% - 28px)); border: 1px solid var(--ink); border-top: 6px solid var(--signal); box-shadow: 9px 9px 0 var(--acid), var(--shadow); background: var(--cream); }
@@ -113,4 +130,16 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
 
 @media (max-width: 850px) { .hero { grid-template-columns: 1fr; gap: 56px; }.room-card { width: min(420px, calc(100% - 10px)); justify-self: end; }.admin-grid { grid-template-columns: 1fr 1fr; }.settings-panel { grid-column: span 2; } }
 @media (max-width: 600px) { .page-width { width: min(100% - 28px, 1180px); }.topbar { min-height: 68px; }.brand { font-size: 18px; }.brand small { font-size: 7px; }.brand-mark { width: 32px; height: 32px; font-size: 16px; }.profile-chip { display: none; }.topbar-actions { gap: 6px; }.topbar-actions .button { min-height: 39px; padding-inline: 10px; font-size: 10px; }.button-install { max-width: 97px; line-height: 1.1; }.hero { min-height: 0; padding-top: 72px; gap: 48px; }.hero::after { background: radial-gradient(circle at 88% 13%, rgba(236,84,67,.38), transparent 11rem), repeating-linear-gradient(122deg, transparent 0 30px, rgba(255,255,255,.028) 31px 32px); } h1 { font-size: clamp(44px, 14vw, 62px); letter-spacing: -3.8px; }.hero-copy { font-size: 15px; }.hero-actions .button { flex: 1 1 145px; }.room-card { min-height: 235px; padding: 23px; box-shadow: 6px 6px 0 var(--signal); }.notices-section { padding-top: 64px; padding-bottom: 72px; }.schedule-section { padding: 68px 0 77px; }.section-heading { align-items: start; flex-direction: column; }.week-picker { width: 100%; justify-content: space-between; }.calendar-note { line-height: 2; }.calendar-wrap { margin-right: -14px; box-shadow: 5px 5px 0 var(--signal); }.manager-grid, .admin-grid { grid-template-columns: 1fr; }.settings-panel { grid-column: auto; }.panel { padding: 21px; }.member-area { padding: 74px 0 62px; }.admin-area { padding-bottom: 76px; }.notice { grid-template-columns: 1fr; gap: 7px; }.notice:hover { padding-inline: 7px; background: transparent; }.notice time { order: -1; }.footer { align-items: start; flex-direction: column; gap: 9px; }.auth-dialog { width: 100%; max-height: 86dvh; margin: auto 0 0; padding: 30px 22px max(28px, env(safe-area-inset-bottom)); border-inline: 0; border-bottom: 0; border-radius: 18px 18px 0 0; }.reservation-dialog { padding: 28px 22px; }.form-row { gap: 9px; }.toast { right: 14px; max-width: calc(100% - 28px); } }
+@media (max-width: 600px) {
+  .bands-section { padding-bottom: 76px; }
+  .band-directory { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+  .band-card { min-height: 178px; padding: 15px 12px; box-shadow: 4px 4px 0 rgba(16,17,20,.15); }
+  .band-card-logo, .band-logo-fallback { width: 90px; height: 90px; }
+  .band-card h3 { margin-top: 12px; font-size: 14px; }
+  .member-area-priority { padding-top: 34px; padding-bottom: 45px; }
+  .band-logo-editor { grid-template-columns: 1fr; gap: 17px; }
+  .band-logo-preview { width: 128px; height: 128px; }
+  .band-logo-actions { grid-template-columns: 1fr; }
+  .band-logo-actions .button-ghost { width: 100%; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
