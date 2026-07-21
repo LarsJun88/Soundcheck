@@ -113,9 +113,9 @@
           <form id="bandForm" class="panel">
             <div class="panel-heading"><h3>밴드 추가</h3><span>초대 코드 발급</span></div>
             <label>밴드 이름<input id="bandName" maxlength="40" required placeholder="예: 오후의 잡음" /></label>
-            <label>밴드 관리자 이메일<input id="managerEmail" type="email" required placeholder="manager@example.com" /></label>
+            <label>밴드 관리자 아이디<input id="managerId" maxlength="12" autocomplete="username" pattern="[가-힣A-Za-z0-9_-]{2,12}" required placeholder="예: 드럼민수" /></label>
             <button class="button button-primary form-submit" type="submit">밴드 추가 및 초대 코드 만들기</button>
-            <p class="form-help">표시되는 코드를 해당 이메일의 관리자에게 전달하세요.</p>
+            <p class="form-help">밴드 관리자에게 사용할 아이디와 초대 코드를 함께 전달해 주세요. 아이디는 가입할 때 정확히 같아야 합니다.</p>
           </form>
           <form id="announcementForm" class="panel">
             <div class="panel-heading"><h3>공지 등록</h3><span>메인 페이지 공개</span></div>
@@ -144,21 +144,21 @@
       <div id="authView">
         <p class="eyebrow">MANAGER ACCESS</p>
         <h2>관리자 로그인</h2>
-        <p class="dialog-copy">밴드 관리자는 초대받은 이메일로 계정을 만들고 비밀번호를 직접 설정합니다.</p>
+        <p class="dialog-copy">밴드 관리자와 메인 관리자는 원하는 아이디와 비밀번호로 계정을 만듭니다. 아이디는 한글·영문·숫자·_·-를 2~12자로 사용할 수 있습니다.</p>
         <form id="loginForm" class="auth-form">
-          <label>이메일<input id="loginEmail" type="email" autocomplete="email" required /></label>
+          <label>아이디<input id="loginId" maxlength="12" autocomplete="username" pattern="[가-힣A-Za-z0-9_-]{2,12}" required /></label>
           <label>비밀번호<input id="loginPassword" type="password" autocomplete="current-password" minlength="8" required /></label>
           <button class="button button-primary form-submit" type="submit">로그인</button>
         </form>
-        <div class="auth-links"><button id="showSignupButton" class="text-button" type="button">처음이신가요? 계정 만들기</button><button id="resetPasswordButton" class="text-button" type="button">비밀번호 재설정</button></div>
+        <div class="auth-links"><button id="showSignupButton" class="text-button" type="button">처음이신가요? 계정 만들기</button></div>
       </div>
       <div id="signupView" class="hidden">
         <p class="eyebrow">MANAGER ACTIVATION</p>
         <h2>관리자 계정 만들기</h2>
-        <p class="dialog-copy">밴드 관리자는 초대 이메일과 코드를 입력하세요. 최초 메인 관리자는 초대 코드를 비워둔 채 계정을 만든 뒤 초기 관리자 코드를 입력하세요.</p>
+        <p class="dialog-copy">초대 코드와 메인 관리자가 지정한 아이디를 입력해 주세요. 처음 메인 관리자는 초대 코드를 비워 둔 채 계정을 만든 뒤 초기 관리자 코드를 입력하세요.</p>
         <form id="signupForm" class="auth-form">
           <label>이름<input id="signupName" maxlength="40" autocomplete="name" required /></label>
-          <label>초대받은 이메일<input id="signupEmail" type="email" autocomplete="email" required /></label>
+          <label>초대받은 아이디<input id="signupId" maxlength="12" autocomplete="username" pattern="[가-힣A-Za-z0-9_-]{2,12}" required /></label>
           <label>새 비밀번호<input id="signupPassword" type="password" autocomplete="new-password" minlength="8" required /></label>
           <label>밴드 초대 코드<input id="signupInviteCode" maxlength="10" autocapitalize="characters" placeholder="최초 메인 관리자는 비워두세요" /></label>
           <button class="button button-primary form-submit" type="submit">계정 만들고 활성화하기</button>

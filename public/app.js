@@ -3,7 +3,6 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -41,6 +40,30 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const functions = getFunctions(app, "asia-northeast3");
 const call = (name, data) => httpsCallable(functions, name)(data);
+const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
+
+function normaliseLoginId(value) {
+  const loginId = String(value || "").trim().normalize("NFC").toLocaleLowerCase("ko-KR");
+  if (!LOGIN_ID_PATTERN.test(loginId)) {
+    throw new Error("아이디는 한글·영문·숫자·밑줄·하이픈으로 2~12자까지 사용할 수 있습니다.");
+  }
+  return loginId;
+}
+
+function loginIdToAuthEmail(loginId) {
+  const bytes = new TextEncoder().encode(loginId);
+  const encoded = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return `id-${encoded}@id.soundcheck.local`;
+}
+
+function loginIdFromCurrentUser() {
+  const email = auth.currentUser?.email || "";
+  const matched = /^id-([a-zA-Z0-9_-]+)@id\.soundcheck\.local$/.exec(email);
+  if (!matched) throw new Error("아이디 정보를 확인할 수 없습니다. 다시 로그인해 주세요.");
+  const base64 = matched[1].replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+  return normaliseLoginId(new TextDecoder().decode(bytes));
+}
 
 let deferredInstallPrompt;
 
@@ -114,11 +137,11 @@ function showToast(message, error = false) {
 
 function errorMessage(error) {
   const messages = {
-    "auth/invalid-credential": "이메일 또는 비밀번호가 맞지 않습니다.",
-    "auth/email-already-in-use": "이미 사용 중인 이메일입니다. 로그인해 주세요.",
+    "auth/invalid-credential": "아이디 또는 비밀번호가 맞지 않습니다.",
+    "auth/email-already-in-use": "이미 사용 중인 아이디입니다. 로그인해 주세요.",
     "auth/weak-password": "비밀번호는 8자 이상으로 설정해 주세요.",
     "auth/user-not-found": "등록된 계정을 찾지 못했습니다.",
-    "auth/invalid-email": "이메일 주소를 확인해 주세요.",
+    "auth/invalid-email": "아이디 형식을 확인해 주세요.",
   };
   return messages[error?.code] || error?.message || "처리 중 문제가 발생했습니다. 다시 시도해 주세요.";
 }
@@ -304,18 +327,22 @@ async function handleReservation(event) {
 async function handleLogin(event) {
   event.preventDefault();
   try {
-    await signInWithEmailAndPassword(auth, elements.loginEmail.value.trim(), elements.loginPassword.value);
+    const loginId = normaliseLoginId(elements.loginId.value);
+    await signInWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), elements.loginPassword.value);
+    await refreshProfile();
+    renderProfile();
+    if (state.profile) subscribeToAppData();
     elements.authDialog.close();
     showToast("로그인했습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
   }
 }
-
 async function handleSignup(event) {
   event.preventDefault();
   try {
-    await createUserWithEmailAndPassword(auth, elements.signupEmail.value.trim(), elements.signupPassword.value);
+    const loginId = normaliseLoginId(elements.signupId.value);
+    await createUserWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), elements.signupPassword.value);
     const inviteCode = elements.signupInviteCode.value.trim();
     if (!inviteCode) {
       elements.signupForm.reset();
@@ -323,7 +350,7 @@ async function handleSignup(event) {
       showToast("계정이 만들어졌습니다. 초기 관리자 코드를 입력해 권한을 활성화하세요.");
       return;
     }
-    await call("claimBandInvite", { displayName: elements.signupName.value.trim(), code: inviteCode });
+    await call("claimBandInvite", { displayName: elements.signupName.value.trim(), code: inviteCode, loginId });
     await refreshProfile();
     renderProfile();
     elements.authDialog.close();
@@ -333,11 +360,10 @@ async function handleSignup(event) {
     showToast(errorMessage(error), true);
   }
 }
-
 async function handleClaimInvite(event) {
   event.preventDefault();
   try {
-    await call("claimBandInvite", { displayName: elements.claimName.value.trim(), code: elements.claimInviteCode.value.trim() });
+    await call("claimBandInvite", { displayName: elements.claimName.value.trim(), code: elements.claimInviteCode.value.trim(), loginId: loginIdFromCurrentUser() });
     await refreshProfile();
     renderProfile();
     subscribeToAppData();
@@ -351,7 +377,7 @@ async function handleClaimInvite(event) {
 async function handleBootstrap(event) {
   event.preventDefault();
   try {
-    await call("bootstrapMainAdmin", { displayName: elements.bootstrapName.value.trim(), code: elements.bootstrapCode.value });
+    await call("bootstrapMainAdmin", { displayName: elements.bootstrapName.value.trim(), code: elements.bootstrapCode.value, loginId: loginIdFromCurrentUser() });
     await refreshProfile();
     renderProfile();
     subscribeToAppData();
@@ -365,7 +391,7 @@ async function handleBootstrap(event) {
 async function handleBandCreate(event) {
   event.preventDefault();
   try {
-    const result = await call("createBand", { name: elements.bandName.value.trim(), managerEmail: elements.managerEmail.value.trim() });
+    const result = await call("createBand", { name: elements.bandName.value.trim(), managerLoginId: normaliseLoginId(elements.managerId.value) });
     const expires = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(result.data.expiresAt));
     elements.inviteResult.innerHTML = `<strong>${escapeHtml(result.data.code)}</strong><p><b>${escapeHtml(elements.bandName.value.trim())}</b> 관리자에게 이 코드를 전달하세요. ${expires}까지 한 번만 사용할 수 있습니다.</p>`;
     elements.inviteResult.classList.remove("hidden");
@@ -441,11 +467,6 @@ function bindEvents() {
     const id = event.target.dataset.cancelReservation;
     if (!id || !window.confirm("이 예약을 취소할까요?")) return;
     try { await call("cancelReservation", { reservationId: id }); showToast("예약을 취소했습니다."); } catch (error) { showToast(errorMessage(error), true); }
-  });
-  elements.resetPasswordButton.addEventListener("click", async () => {
-    const email = elements.loginEmail.value.trim();
-    if (!email) return showToast("먼저 이메일을 입력해 주세요.", true);
-    try { await sendPasswordResetEmail(auth, email); showToast("비밀번호 재설정 이메일을 보냈습니다."); } catch (error) { showToast(errorMessage(error), true); }
   });
 }
 

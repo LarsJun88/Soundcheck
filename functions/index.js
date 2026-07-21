@@ -14,6 +14,8 @@ const BOOTSTRAP_CODE = defineSecret("BOOTSTRAP_CODE");
 
 const COLORS = ["#8B5CF6", "#0EA5E9", "#10B981", "#F97316", "#EC4899", "#EAB308"];
 const DEFAULT_ROOM_SETTINGS = { openHour: 9, closeHour: 23, slotMinutes: 60 };
+const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
+const INTERNAL_EMAIL_DOMAIN = "@id.soundcheck.local";
 
 function badRequest(message) {
   throw new HttpsError("invalid-argument", message);
@@ -43,14 +45,25 @@ async function requireMainAdmin(request) {
   return { auth, profile };
 }
 
-function normaliseEmail(value) {
-  const email = String(value || "").trim().toLowerCase();
-  if (!/^\S+@\S+\.\S+$/.test(email)) {
-    badRequest("올바른 관리자 이메일을 입력해 주세요.");
+function normaliseLoginId(value) {
+  const loginId = String(value || "").trim().normalize("NFC").toLocaleLowerCase("ko-KR");
+  if (!LOGIN_ID_PATTERN.test(loginId)) {
+    badRequest("아이디는 한글·영문·숫자·밑줄·하이픈으로 2~12자까지 사용할 수 있습니다.");
   }
-  return email;
+  return loginId;
 }
 
+function loginIdToAuthEmail(loginId) {
+  return `id-${Buffer.from(loginId, "utf8").toString("base64url")}${INTERNAL_EMAIL_DOMAIN}`;
+}
+
+function requireVerifiedLoginId(request) {
+  const loginId = normaliseLoginId(request.data?.loginId);
+  if (request.auth?.token?.email !== loginIdToAuthEmail(loginId)) {
+    throw new HttpsError("permission-denied", "로그인 아이디를 확인할 수 없습니다.");
+  }
+  return loginId;
+}
 function dateInSeoul(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -99,6 +112,7 @@ exports.bootstrapMainAdmin = onCall(
   { secrets: [BOOTSTRAP_CODE] },
   async (request) => {
     const auth = requireAuth(request);
+    const loginId = requireVerifiedLoginId(request);
     if (String(request.data?.code || "") !== BOOTSTRAP_CODE.value()) {
       throw new HttpsError("permission-denied", "초기 메인 관리자 코드가 일치하지 않습니다.");
     }
@@ -116,7 +130,7 @@ exports.bootstrapMainAdmin = onCall(
       transaction.set(systemRef, { mainAdminUid: auth.uid, initializedAt: FieldValue.serverTimestamp() });
       transaction.set(userRef, {
         displayName,
-        email: auth.token.email || "",
+        loginId,
         role: "main_admin",
         bandId: null,
         active: true,
@@ -131,7 +145,7 @@ exports.bootstrapMainAdmin = onCall(
 exports.createBand = onCall(async (request) => {
   const { auth } = await requireMainAdmin(request);
   const name = String(request.data?.name || "").trim().slice(0, 40);
-  const managerEmail = normaliseEmail(request.data?.managerEmail);
+  const managerLoginId = normaliseLoginId(request.data?.managerLoginId);
   if (name.length < 2) badRequest("밴드 이름은 두 글자 이상 입력해 주세요.");
 
   const bandRef = db.collection("bands").doc();
@@ -143,7 +157,7 @@ exports.createBand = onCall(async (request) => {
   await db.runTransaction(async (transaction) => {
     transaction.set(bandRef, {
       name,
-      managerEmail,
+      managerLoginId,
       managerUid: null,
       color,
       active: true,
@@ -153,7 +167,7 @@ exports.createBand = onCall(async (request) => {
     transaction.set(inviteRef, {
       bandId: bandRef.id,
       bandName: name,
-      managerEmail,
+      managerLoginId,
       code,
       status: "pending",
       expiresAt,
@@ -172,7 +186,7 @@ exports.claimBandInvite = onCall(async (request) => {
   if (!/^[A-Z0-9]{10}$/.test(code) || !displayName) {
     badRequest("초대 코드와 표시할 이름을 확인해 주세요.");
   }
-  const email = normaliseEmail(auth.token.email);
+  const loginId = requireVerifiedLoginId(request);
   const userRef = db.collection("users").doc(auth.uid);
   const inviteQuery = db.collection("bandInvites").where("code", "==", code).limit(1);
 
@@ -193,8 +207,8 @@ exports.claimBandInvite = onCall(async (request) => {
     if (invite.status !== "pending" || invite.expiresAt.toDate() < new Date()) {
       throw new HttpsError("failed-precondition", "만료되었거나 이미 사용된 초대 코드입니다.");
     }
-    if (invite.managerEmail !== email) {
-      throw new HttpsError("permission-denied", "초대받은 이메일 계정으로 로그인해 주세요.");
+    if (invite.managerLoginId !== loginId) {
+      throw new HttpsError("permission-denied", "초대받은 아이디로 로그인해 주세요.");
     }
 
     const bandRef = db.collection("bands").doc(invite.bandId);
@@ -205,13 +219,13 @@ exports.claimBandInvite = onCall(async (request) => {
     bandName = bandSnapshot.data().name;
     transaction.set(userRef, {
       displayName,
-      email,
+      loginId,
       role: "band_admin",
       bandId: invite.bandId,
       active: true,
       createdAt: FieldValue.serverTimestamp(),
     });
-    transaction.update(bandRef, { managerUid: auth.uid, managerEmail: email, activatedAt: FieldValue.serverTimestamp() });
+    transaction.update(bandRef, { managerUid: auth.uid, managerLoginId: loginId, activatedAt: FieldValue.serverTimestamp() });
     transaction.update(inviteDoc.ref, { status: "claimed", claimedBy: auth.uid, claimedAt: FieldValue.serverTimestamp() });
   });
 
