@@ -57,9 +57,22 @@ function loginIdToAuthEmail(loginId) {
   return `id-${Buffer.from(loginId, "utf8").toString("base64url")}${INTERNAL_EMAIL_DOMAIN}`;
 }
 
+function loginIdFromAuthEmail(value) {
+  const email = String(value || "");
+  if (!email.startsWith("id-") || !email.endsWith(INTERNAL_EMAIL_DOMAIN)) {
+    throw new HttpsError("permission-denied", "로그인 아이디를 확인할 수 없습니다.");
+  }
+  const encoded = email.slice(3, -INTERNAL_EMAIL_DOMAIN.length);
+  const loginId = normaliseLoginId(Buffer.from(encoded, "base64url").toString("utf8"));
+  if (loginIdToAuthEmail(loginId) !== email) {
+    throw new HttpsError("permission-denied", "로그인 아이디를 확인할 수 없습니다.");
+  }
+  return loginId;
+}
+
 function requireVerifiedLoginId(request) {
-  const loginId = normaliseLoginId(request.data?.loginId);
-  if (request.auth?.token?.email !== loginIdToAuthEmail(loginId)) {
+  const loginId = loginIdFromAuthEmail(request.auth?.token?.email);
+  if (request.data?.loginId !== undefined && normaliseLoginId(request.data.loginId) !== loginId) {
     throw new HttpsError("permission-denied", "로그인 아이디를 확인할 수 없습니다.");
   }
   return loginId;
