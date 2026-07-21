@@ -1,4 +1,4 @@
-const SHELL_CACHE = "soundcheck-shell-v2";
+const SHELL_CACHE = "soundcheck-shell-v3";
 const APP_SHELL = [
   "./",
   "./index.html",

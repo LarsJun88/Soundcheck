@@ -151,6 +151,10 @@ function setDialogView(view) {
 }
 
 function openAuth() {
+  if (window.location.protocol === "file:") {
+    showToast("로그인과 가입은 배포된 Soundcheck 웹주소에서만 사용할 수 있습니다.", true);
+    return;
+  }
   if (configMissing) {
     showToast("먼저 public/firebase-config.js에 Firebase 웹 설정을 입력해 주세요.", true);
     return;
@@ -234,12 +238,13 @@ function renderProfile() {
   const isActive = Boolean(profile);
   elements.profileChip.classList.toggle("hidden", !isActive);
   elements.signOutButton.classList.toggle("hidden", !state.firebaseUser);
-  elements.openAuthButton.classList.toggle("hidden", Boolean(state.firebaseUser));
+  const needsActivation = Boolean(state.firebaseUser && !profile);
+  elements.openAuthButton.classList.toggle("hidden", Boolean(state.firebaseUser && profile));
+  elements.openAuthButton.textContent = needsActivation ? "권한 활성화" : "로그인 / 시작";
   elements.memberArea.classList.toggle("hidden", !isActive);
   elements.adminArea.classList.toggle("hidden", profile?.role !== "main_admin");
   elements.reservationBandField.classList.toggle("hidden", profile?.role !== "main_admin");
   if (!profile) {
-    if (state.firebaseUser) elements.openAuthButton.classList.add("hidden");
     renderNotices();
     return;
   }
@@ -331,7 +336,12 @@ async function handleLogin(event) {
     await signInWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), elements.loginPassword.value);
     await refreshProfile();
     renderProfile();
-    if (state.profile) subscribeToAppData();
+    if (!state.profile) {
+      setDialogView("activationView");
+      showToast("계정은 만들어졌습니다. 초대 코드 또는 초기 관리자 코드로 권한을 활성화하세요.");
+      return;
+    }
+    subscribeToAppData();
     elements.authDialog.close();
     showToast("로그인했습니다.");
   } catch (error) {
