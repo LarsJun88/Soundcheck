@@ -23,6 +23,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
+const APP_VERSION = "20260721.4";
 const state = {
   firebaseUser: null,
   profile: null,
@@ -40,6 +41,13 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const functions = getFunctions(app, "asia-northeast3");
 const call = (name, data) => httpsCallable(functions, name)(data);
+
+function requiredElement(id) {
+  const element = elements[id] || document.getElementById(id);
+  if (!element) throw new Error("화면 업데이트가 완전히 적용되지 않았습니다. 페이지를 새로고침해 주세요.");
+  return element;
+}
+
 const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
 
 function normaliseLoginId(value) {
@@ -351,16 +359,16 @@ async function handleLogin(event) {
 async function handleSignup(event) {
   event.preventDefault();
   try {
-    const loginId = normaliseLoginId(elements.signupId.value);
-    await createUserWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), elements.signupPassword.value);
-    const inviteCode = elements.signupInviteCode.value.trim();
+    const loginId = normaliseLoginId(requiredElement("signupId").value);
+    await createUserWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), requiredElement("signupPassword").value);
+    const inviteCode = requiredElement("signupInviteCode").value.trim();
     if (!inviteCode) {
       elements.signupForm.reset();
       setDialogView("activationView");
       showToast("계정이 만들어졌습니다. 초기 관리자 코드를 입력해 권한을 활성화하세요.");
       return;
     }
-    await call("claimBandInvite", { displayName: elements.signupName.value.trim(), code: inviteCode, loginId });
+    await call("claimBandInvite", { displayName: requiredElement("signupName").value.trim(), code: inviteCode, loginId });
     await refreshProfile();
     renderProfile();
     elements.authDialog.close();
@@ -481,6 +489,17 @@ function bindEvents() {
 }
 
 function initialise() {
+  const markupVersion = document.querySelector('meta[name="soundcheck-version"]')?.content;
+  if (markupVersion !== APP_VERSION) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("appVersion") !== APP_VERSION) {
+      url.searchParams.set("appVersion", APP_VERSION);
+      window.location.replace(url.toString());
+      return;
+    }
+    showToast("화면 업데이트가 필요합니다. 브라우저를 완전히 닫고 다시 열어 주세요.", true);
+    return;
+  }
   const today = todayInSeoul();
   elements.weekStart.value = today;
   elements.reservationDate.value = today;
