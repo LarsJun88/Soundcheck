@@ -57,6 +57,7 @@ h1 { max-width: 760px; margin-bottom: 22px; font: 800 clamp(49px, 7vw, 88px)/.92
 h1 em { color: var(--acid); font-style: normal; text-shadow: 3px 3px 0 var(--signal); }
 .hero-copy { max-width: 520px; margin-bottom: 31px; color: rgba(255,255,255,.7); font-size: 16px; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 11px; }
+.hero-reservation-button { flex-basis: 100%; max-width: 232px; }
 .room-card { position: relative; min-height: 263px; padding: 26px 29px; overflow: hidden; border: 1px solid rgba(255,255,255,.3); color: #fbf9f2; background: var(--ink-raised); box-shadow: 9px 9px 0 var(--signal); transform: rotate(2.2deg); }
 .room-card::after { content: ""; position: absolute; right: -21px; bottom: -37px; width: 160px; height: 160px; border: 22px solid var(--acid); border-radius: 50%; opacity: .16; }
 .room-card-top { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; color: var(--acid); font: 500 10px "DM Mono", monospace; letter-spacing: 1.4px; }
@@ -144,4 +145,5 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
   .band-logo-actions { grid-template-columns: 1fr; }
   .band-logo-actions .button-ghost { width: 100%; }
 }
+@media (max-width: 600px) { .hero-reservation-button { max-width: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

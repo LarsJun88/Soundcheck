@@ -23,7 +23,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260721.7";
+const APP_VERSION = "20260721.8";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const state = {
   firebaseUser: null,
@@ -332,7 +332,7 @@ function renderBands() {
   const options = activeBands.map((band) => `<option value="${band.id}">${escapeHtml(band.name)}</option>`).join("");
   elements.reservationBand.innerHTML = options;
   elements.logoBand.innerHTML = options;
-  elements.deleteBand.innerHTML = options || "<option value="">삭제할 밴드 없음</option>";
+  elements.deleteBand.innerHTML = options || '<option value="">삭제할 밴드 없음</option>';
   if (activeBands.some((band) => band.id === reservationValue)) elements.reservationBand.value = reservationValue;
   if (activeBands.some((band) => band.id === logoValue)) elements.logoBand.value = logoValue;
   if (activeBands.some((band) => band.id === deleteValue)) elements.deleteBand.value = deleteValue;
@@ -341,10 +341,8 @@ function renderBands() {
 
 function renderProfile() {
   const profile = state.profile;
-  const isBandAdmin = profile?.role === "band_admin";
-  if (isBandAdmin) document.querySelector("main").prepend(elements.memberArea);
-  else elements.memberAreaAnchor.after(elements.memberArea);
-  elements.memberArea.classList.toggle("member-area-priority", isBandAdmin);
+  elements.memberAreaAnchor.after(elements.memberArea);
+  elements.memberArea.classList.remove("member-area-priority");
   const isActive = Boolean(profile);
   elements.profileChip.classList.toggle("hidden", !isActive);
   elements.signOutButton.classList.toggle("hidden", !state.firebaseUser);
@@ -426,6 +424,13 @@ async function showReservationOverview() {
   showToast("시간표에서 예약된 날짜와 시간을 확인할 수 있습니다.");
 }
 
+function openReservationEntry() {
+  if (!state.profile) {
+    openAuth();
+    return;
+  }
+  elements.memberArea.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 function showReservation(id) {
   const reservation = state.reservations.find((item) => item.id === id);
   if (!reservation) return;
@@ -684,7 +689,7 @@ async function handleSettings(event) {
 
 function bindEvents() {
   elements.openAuthButton.addEventListener("click", openAuth);
-  elements.heroLoginButton.addEventListener("click", showReservationOverview);
+  elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
   elements.showSignupButton.addEventListener("click", () => setDialogView("signupView"));
