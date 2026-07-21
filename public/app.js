@@ -23,9 +23,11 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260721.4";
+const APP_VERSION = "20260721.5";
+const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const state = {
   firebaseUser: null,
+  loginId: null,
   profile: null,
   bands: [],
   reservations: [],
@@ -64,13 +66,26 @@ function loginIdToAuthEmail(loginId) {
   return `id-${encoded}@id.soundcheck.local`;
 }
 
+function rememberLoginId(value) {
+  const loginId = normaliseLoginId(value);
+  state.loginId = loginId;
+  localStorage.setItem(LOGIN_ID_STORAGE_KEY, loginId);
+  if (elements.activationLoginId) elements.activationLoginId.value = loginId;
+  return loginId;
+}
+
+function forgetLoginId() {
+  state.loginId = null;
+  localStorage.removeItem(LOGIN_ID_STORAGE_KEY);
+}
+
 function loginIdFromCurrentUser() {
+  const loginId = normaliseLoginId(state.loginId || elements.activationLoginId?.value || localStorage.getItem(LOGIN_ID_STORAGE_KEY));
   const email = auth.currentUser?.email || "";
-  const matched = /^id-([a-zA-Z0-9_-]+)@id\.soundcheck\.local$/.exec(email);
-  if (!matched) throw new Error("아이디 정보를 확인할 수 없습니다. 다시 로그인해 주세요.");
-  const base64 = matched[1].replace(/-/g, "+").replace(/_/g, "/");
-  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-  return normaliseLoginId(new TextDecoder().decode(bytes));
+  if (email.toLowerCase() !== loginIdToAuthEmail(loginId).toLowerCase()) {
+    throw new Error("로그인한 아이디와 입력한 아이디가 다릅니다.");
+  }
+  return rememberLoginId(loginId);
 }
 
 let deferredInstallPrompt;
@@ -342,6 +357,7 @@ async function handleLogin(event) {
   try {
     const loginId = normaliseLoginId(elements.loginId.value);
     await signInWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), elements.loginPassword.value);
+    rememberLoginId(loginId);
     await refreshProfile();
     renderProfile();
     if (!state.profile) {
@@ -361,6 +377,7 @@ async function handleSignup(event) {
   try {
     const loginId = normaliseLoginId(requiredElement("signupId").value);
     await createUserWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), requiredElement("signupPassword").value);
+    rememberLoginId(loginId);
     const inviteCode = requiredElement("signupInviteCode").value.trim();
     if (!inviteCode) {
       elements.signupForm.reset();
@@ -467,7 +484,10 @@ function bindEvents() {
   elements.bandForm.addEventListener("submit", handleBandCreate);
   elements.announcementForm.addEventListener("submit", handleAnnouncement);
   elements.settingsForm.addEventListener("submit", handleSettings);
-  elements.signOutButton.addEventListener("click", () => signOut(auth));
+  elements.signOutButton.addEventListener("click", async () => {
+    forgetLoginId();
+    await signOut(auth);
+  });
   elements.weekStart.addEventListener("change", () => { if (state.profile) subscribeToAppData(); renderCalendar(); });
   elements.startHour.addEventListener("change", () => {
     if (Number(elements.endHour.value) <= Number(elements.startHour.value)) elements.endHour.value = String(Number(elements.startHour.value) + 1);
@@ -500,6 +520,8 @@ function initialise() {
     showToast("화면 업데이트가 필요합니다. 브라우저를 완전히 닫고 다시 열어 주세요.", true);
     return;
   }
+  const rememberedLoginId = localStorage.getItem(LOGIN_ID_STORAGE_KEY);
+  if (rememberedLoginId && elements.activationLoginId) elements.activationLoginId.value = rememberedLoginId;
   const today = todayInSeoul();
   elements.weekStart.value = today;
   elements.reservationDate.value = today;

@@ -1,10 +1,10 @@
-const SHELL_CACHE = "soundcheck-shell-v4";
+const SHELL_CACHE = "soundcheck-shell-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./rock-theme.css",
-  "./app.js?v=20260721.4",
+  "./app.js?v=20260721.5",
   "./firebase-config.js",
   "./manifest.webmanifest",
   "./icons/soundcheck.svg",

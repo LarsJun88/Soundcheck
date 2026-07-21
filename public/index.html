@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260721.4" />
+    <meta name="soundcheck-version" content="20260721.5" />
     <meta name="theme-color" content="#101114" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -170,6 +170,9 @@
         <p class="eyebrow">ACCOUNT ACTIVATION</p>
         <h2>권한을 활성화하세요</h2>
         <p class="dialog-copy">로그인은 되었지만 아직 예약 권한이 없습니다. 초대 코드로 밴드 관리자를 활성화하거나, 최초 메인 관리자를 등록하세요.</p>
+        <div class="auth-form compact-form">
+          <label>로그인 아이디 확인<input id="activationLoginId" maxlength="12" autocomplete="username" pattern="[가-힣A-Za-z0-9_-]{2,12}" required placeholder="가입한 아이디" /></label>
+        </div>
         <form id="claimInviteForm" class="auth-form compact-form">
           <label>표시할 이름<input id="claimName" maxlength="40" required /></label>
           <label>밴드 초대 코드<input id="claimInviteCode" maxlength="10" autocapitalize="characters" required /></label>
@@ -194,6 +197,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260721.4"></script>
+    <script type="module" src="./app.js?v=20260721.5"></script>
   </body>
 </html>
