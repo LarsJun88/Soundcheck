@@ -1,4 +1,3 @@
-const { randomUUID } = require("crypto");
 const admin = require("firebase-admin");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
@@ -161,38 +160,22 @@ exports.bootstrapMainAdmin = onCall(
 exports.createBand = onCall(async (request) => {
   const { auth } = await requireMainAdmin(request);
   const name = String(request.data?.name || "").trim().slice(0, 40);
-  const managerLoginId = normaliseLoginId(request.data?.managerLoginId);
   if (name.length < 2) badRequest("밴드 이름은 두 글자 이상 입력해 주세요.");
 
   const bandRef = db.collection("bands").doc();
-  const inviteRef = db.collection("bandInvites").doc();
-  const code = randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
-  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   const color = COLORS[Math.floor(Math.random() * COLORS.length)];
 
-  await db.runTransaction(async (transaction) => {
-    transaction.set(bandRef, {
-      name,
-      managerLoginId,
-      managerUid: null,
-      color,
-      active: true,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: auth.uid,
-    });
-    transaction.set(inviteRef, {
-      bandId: bandRef.id,
-      bandName: name,
-      managerLoginId,
-      code,
-      status: "pending",
-      expiresAt,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: auth.uid,
-    });
+  await bandRef.set({
+    name,
+    memberUids: [],
+    memberCount: 0,
+    color,
+    active: true,
+    createdAt: FieldValue.serverTimestamp(),
+    createdBy: auth.uid,
   });
 
-  return { bandId: bandRef.id, code, expiresAt: expiresAt.toDate().toISOString() };
+  return { bandId: bandRef.id, name };
 });
 
 exports.deleteBand = onCall(async (request) => {
@@ -202,6 +185,7 @@ exports.deleteBand = onCall(async (request) => {
 
   const bandRef = db.collection("bands").doc(bandId);
   const inviteQuery = db.collection("bandInvites").where("bandId", "==", bandId).where("status", "==", "pending");
+  const memberQuery = db.collection("users").where("bandId", "==", bandId);
   let bandName = "";
 
   await db.runTransaction(async (transaction) => {
@@ -212,8 +196,7 @@ exports.deleteBand = onCall(async (request) => {
     const band = bandSnapshot.data();
     bandName = String(band.name || "");
     const pendingInvites = await transaction.get(inviteQuery);
-    const managerRef = band.managerUid ? db.collection("users").doc(band.managerUid) : null;
-    const managerSnapshot = managerRef ? await transaction.get(managerRef) : null;
+    const members = await transaction.get(memberQuery);
 
     transaction.update(bandRef, {
       active: false,
@@ -227,13 +210,15 @@ exports.deleteBand = onCall(async (request) => {
         cancelledBy: auth.uid,
       });
     });
-    if (managerRef && managerSnapshot?.exists && managerSnapshot.data().role === "band_admin" && managerSnapshot.data().bandId === bandId) {
-      transaction.update(managerRef, {
+    members.docs.forEach((member) => {
+      const memberData = member.data();
+      if (memberData.role !== "band_admin" || memberData.active === false) return;
+      transaction.update(member.ref, {
         active: false,
         deactivatedAt: FieldValue.serverTimestamp(),
         deactivatedBy: auth.uid,
       });
-    }
+    });
   });
 
   return { bandId, bandName };
@@ -304,6 +289,51 @@ exports.updateBandLogo = onCall(async (request) => {
   });
 
   return { bandId, logoDataUrl };
+});
+
+exports.joinBand = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const loginId = requireVerifiedLoginId(request);
+  const bandId = String(request.data?.bandId || "").trim();
+  const displayName = String(request.data?.displayName || "").trim().slice(0, 40);
+  if (!bandId || !displayName) {
+    badRequest("밴드와 표시할 이름을 확인해 주세요.");
+  }
+
+  const userRef = db.collection("users").doc(auth.uid);
+  const bandRef = db.collection("bands").doc(bandId);
+  let bandName = "";
+
+  await db.runTransaction(async (transaction) => {
+    const [existingProfile, bandSnapshot] = await Promise.all([
+      transaction.get(userRef),
+      transaction.get(bandRef),
+    ]);
+    if (existingProfile.exists && existingProfile.data().active !== false) {
+      throw new HttpsError("already-exists", "이미 활성화된 계정입니다.");
+    }
+    if (!bandSnapshot.exists || !bandSnapshot.data().active) {
+      throw new HttpsError("not-found", "선택한 밴드를 찾을 수 없습니다.");
+    }
+
+    bandName = String(bandSnapshot.data().name || "");
+    transaction.set(userRef, {
+      displayName,
+      loginId,
+      role: "band_admin",
+      bandId,
+      active: true,
+      createdAt: FieldValue.serverTimestamp(),
+      joinedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.update(bandRef, {
+      memberUids: FieldValue.arrayUnion(auth.uid),
+      memberCount: FieldValue.increment(1),
+      lastJoinedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { role: "band_admin", bandName };
 });
 
 exports.claimBandInvite = onCall(async (request) => {

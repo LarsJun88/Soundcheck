@@ -23,7 +23,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260721.8";
+const APP_VERSION = "20260721.9";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const state = {
   firebaseUser: null,
@@ -229,6 +229,19 @@ function visibleBands() {
   return source.filter((band) => band.active !== false).slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
 }
 
+function renderJoinBandOptions() {
+  const bands = visibleBands();
+  const controls = [elements.signupBand, elements.claimBand].filter(Boolean);
+  if (!controls.length) return;
+  const bandOptions = bands.map((band) => `<option value="${band.id}">${escapeHtml(band.name)}</option>`).join("");
+  controls.forEach((control) => {
+    const previousValue = control.value;
+    const emptyLabel = bands.length ? (control.id === "signupBand" ? "내 밴드를 선택하세요 (최초 메인 관리자만 비움)" : "밴드를 선택하세요") : "등록된 밴드 없음";
+    control.innerHTML = `<option value="">${emptyLabel}</option>${bandOptions}`;
+    if (bands.some((band) => band.id === previousValue)) control.value = previousValue;
+  });
+}
+
 function renderBandDirectory() {
   const bands = visibleBands();
   elements.bandCount.textContent = bands.length ? `${bands.length}팀` : "등록된 밴드 없음";
@@ -237,6 +250,7 @@ function renderBandDirectory() {
       ${bandLogoMarkup(band)}
       <h3>${escapeHtml(band.name)}</h3>
     </article>`).join("") : "<p class=\"empty-message\">아직 등록된 밴드가 없습니다.</p>";
+  renderJoinBandOptions();
 }
 
 async function loadBandDirectory() {
@@ -356,7 +370,7 @@ function renderProfile() {
     renderNotices();
     return;
   }
-  const roleText = profile.role === "main_admin" ? "메인 관리자" : "밴드 관리자";
+  const roleText = profile.role === "main_admin" ? "메인 관리자" : "밴드원";
   elements.profileChip.textContent = `${profile.displayName} · ${roleText}`;
   elements.memberDescription.textContent = profile.role === "main_admin" ? "모든 밴드의 일정을 확인하고, 필요하면 대리 예약과 취소를 할 수 있습니다." : "내 밴드의 합주 시간을 예약하거나 취소할 수 있습니다.";
   renderBands();
@@ -468,7 +482,7 @@ async function handleLogin(event) {
     renderProfile();
     if (!state.profile) {
       setDialogView("activationView");
-      showToast("계정은 만들어졌습니다. 초대 코드 또는 초기 관리자 코드로 권한을 활성화하세요.");
+      showToast("계정은 만들어졌습니다. 밴드 선택 또는 초기 관리자 코드로 권한을 활성화하세요.");
       return;
     }
     subscribeToAppData();
@@ -484,18 +498,19 @@ async function handleSignup(event) {
     const loginId = normaliseLoginId(requiredElement("signupId").value);
     await createUserWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), requiredElement("signupPassword").value);
     rememberLoginId(loginId);
-    const inviteCode = requiredElement("signupInviteCode").value.trim();
-    if (!inviteCode) {
+    const bandId = requiredElement("signupBand").value;
+    if (!bandId) {
       elements.signupForm.reset();
       setDialogView("activationView");
       showToast("계정이 만들어졌습니다. 초기 관리자 코드를 입력해 권한을 활성화하세요.");
       return;
     }
-    await call("claimBandInvite", { displayName: requiredElement("signupName").value.trim(), code: inviteCode, loginId });
+    await call("joinBand", { displayName: requiredElement("signupName").value.trim(), bandId, loginId });
     await refreshProfile();
     renderProfile();
+    subscribeToAppData();
     elements.authDialog.close();
-    showToast("밴드 관리자 계정이 활성화되었습니다.");
+    showToast("밴드원 계정이 활성화되었습니다.");
   } catch (error) {
     if (auth.currentUser && !state.profile) await auth.currentUser.reload();
     showToast(errorMessage(error), true);
@@ -504,12 +519,14 @@ async function handleSignup(event) {
 async function handleClaimInvite(event) {
   event.preventDefault();
   try {
-    await call("claimBandInvite", { displayName: elements.claimName.value.trim(), code: elements.claimInviteCode.value.trim(), loginId: loginIdFromCurrentUser() });
+    const bandId = elements.claimBand.value;
+    if (!bandId) return showToast("밴드를 선택해 주세요.", true);
+    await call("joinBand", { displayName: elements.claimName.value.trim(), bandId, loginId: loginIdFromCurrentUser() });
     await refreshProfile();
     renderProfile();
     subscribeToAppData();
     elements.authDialog.close();
-    showToast("밴드 관리자 권한이 활성화되었습니다.");
+    showToast("밴드원 권한이 활성화되었습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
   }
@@ -532,12 +549,12 @@ async function handleBootstrap(event) {
 async function handleBandCreate(event) {
   event.preventDefault();
   try {
-    const result = await call("createBand", { name: elements.bandName.value.trim(), managerLoginId: normaliseLoginId(elements.managerId.value) });
-    const expires = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(result.data.expiresAt));
-    elements.inviteResult.innerHTML = `<strong>${escapeHtml(result.data.code)}</strong><p><b>${escapeHtml(elements.bandName.value.trim())}</b> 관리자에게 이 코드를 전달하세요. ${expires}까지 한 번만 사용할 수 있습니다.</p>`;
+    const bandName = elements.bandName.value.trim();
+    await call("createBand", { name: bandName });
+    elements.inviteResult.innerHTML = `<strong>${escapeHtml(bandName)}</strong><p>밴드 등록 완료. 이제 밴드원들이 가입할 때 이 밴드를 선택할 수 있습니다.</p>`;
     elements.inviteResult.classList.remove("hidden");
     elements.bandForm.reset();
-    showToast("밴드를 추가하고 초대 코드를 만들었습니다.");
+    showToast("밴드를 등록했습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
   }
@@ -643,7 +660,7 @@ async function handleBandDelete(event) {
   event.preventDefault();
   const band = selectedDeleteBand();
   if (!band) return showToast("삭제할 밴드를 선택해 주세요.", true);
-  const message = `${band.name} 밴드를 삭제할까요?\n\n함께하는 밴드 목록에서 숨기고, 해당 밴드 관리자의 예약 권한을 비활성화합니다. 기존 예약 기록은 유지됩니다.`;
+  const message = `${band.name} 밴드를 삭제할까요?\n\n함께하는 밴드 목록에서 숨기고, 해당 밴드원들의 예약 권한을 비활성화합니다. 기존 예약 기록은 유지됩니다.`;
   if (!window.confirm(message)) return;
   try {
     await call("deleteBand", { bandId: band.id });
