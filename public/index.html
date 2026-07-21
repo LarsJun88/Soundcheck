@@ -146,12 +146,12 @@
       <div id="signupView" class="hidden">
         <p class="eyebrow">MANAGER ACTIVATION</p>
         <h2>관리자 계정 만들기</h2>
-        <p class="dialog-copy">밴드 초대에 등록된 이메일과 초대 코드를 사용해 활성화하세요.</p>
+        <p class="dialog-copy">밴드 관리자는 초대 이메일과 코드를 입력하세요. 최초 메인 관리자는 초대 코드를 비워둔 채 계정을 만든 뒤 초기 관리자 코드를 입력하세요.</p>
         <form id="signupForm" class="auth-form">
           <label>이름<input id="signupName" maxlength="40" autocomplete="name" required /></label>
           <label>초대받은 이메일<input id="signupEmail" type="email" autocomplete="email" required /></label>
           <label>새 비밀번호<input id="signupPassword" type="password" autocomplete="new-password" minlength="8" required /></label>
-          <label>밴드 초대 코드<input id="signupInviteCode" maxlength="10" autocapitalize="characters" required /></label>
+          <label>밴드 초대 코드<input id="signupInviteCode" maxlength="10" autocapitalize="characters" placeholder="최초 메인 관리자는 비워두세요" /></label>
           <button class="button button-primary form-submit" type="submit">계정 만들고 활성화하기</button>
         </form>
         <button id="showLoginButton" class="text-button" type="button">이미 계정이 있어요 · 로그인</button>

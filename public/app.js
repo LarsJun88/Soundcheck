@@ -283,8 +283,15 @@ async function handleLogin(event) {
 async function handleSignup(event) {
   event.preventDefault();
   try {
-    const credential = await createUserWithEmailAndPassword(auth, elements.signupEmail.value.trim(), elements.signupPassword.value);
-    await call("claimBandInvite", { displayName: elements.signupName.value.trim(), code: elements.signupInviteCode.value.trim() });
+    await createUserWithEmailAndPassword(auth, elements.signupEmail.value.trim(), elements.signupPassword.value);
+    const inviteCode = elements.signupInviteCode.value.trim();
+    if (!inviteCode) {
+      elements.signupForm.reset();
+      setDialogView("activationView");
+      showToast("계정이 만들어졌습니다. 초기 관리자 코드를 입력해 권한을 활성화하세요.");
+      return;
+    }
+    await call("claimBandInvite", { displayName: elements.signupName.value.trim(), code: inviteCode });
     await refreshProfile();
     renderProfile();
     elements.authDialog.close();
