@@ -23,7 +23,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260721.9";
+const APP_VERSION = "20260722.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const state = {
   firebaseUser: null,
@@ -143,6 +143,11 @@ function humanDate(dateText, withDay = false) {
   return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", ...(withDay ? { weekday: "short" } : {}) }).format(date);
 }
 
+function weekdayLabel(dateText) {
+  const date = new Date(`${dateText}T00:00:00+09:00`);
+  return new Intl.DateTimeFormat("ko-KR", { weekday: "long" }).format(date);
+}
+
 function escapeHtml(value) {
   return String(value || "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 }
@@ -236,7 +241,7 @@ function renderJoinBandOptions() {
   const bandOptions = bands.map((band) => `<option value="${band.id}">${escapeHtml(band.name)}</option>`).join("");
   controls.forEach((control) => {
     const previousValue = control.value;
-    const emptyLabel = bands.length ? (control.id === "signupBand" ? "내 밴드를 선택하세요 (최초 메인 관리자만 비움)" : "밴드를 선택하세요") : "등록된 밴드 없음";
+    const emptyLabel = bands.length ? "밴드를 선택하세요" : "등록된 밴드 없음";
     control.innerHTML = `<option value="">${emptyLabel}</option>${bandOptions}`;
     if (bands.some((band) => band.id === previousValue)) control.value = previousValue;
   });
@@ -306,7 +311,7 @@ function renderCalendar() {
   slots.push('<div class="calendar-corner"></div>');
   for (const day of days) {
     const isToday = day === todayInSeoul();
-    slots.push(`<div class="day-head ${isToday ? "today" : ""}"><span>${humanDate(day, true).split(" ")[1] || ""}</span><strong>${humanDate(day)}</strong></div>`);
+    slots.push(`<div class="day-head ${isToday ? "today" : ""}"><span>${weekdayLabel(day)}</span><strong>${humanDate(day)}</strong></div>`);
   }
   for (let hour = state.room.openHour; hour < state.room.closeHour; hour += 1) {
     slots.push(`<div class="time-label">${pad(hour)}:00</div>`);
@@ -496,15 +501,10 @@ async function handleSignup(event) {
   event.preventDefault();
   try {
     const loginId = normaliseLoginId(requiredElement("signupId").value);
+    const bandId = requiredElement("signupBand").value;
+    if (!bandId) return showToast("밴드를 선택해 주세요.", true);
     await createUserWithEmailAndPassword(auth, loginIdToAuthEmail(loginId), requiredElement("signupPassword").value);
     rememberLoginId(loginId);
-    const bandId = requiredElement("signupBand").value;
-    if (!bandId) {
-      elements.signupForm.reset();
-      setDialogView("activationView");
-      showToast("계정이 만들어졌습니다. 초기 관리자 코드를 입력해 권한을 활성화하세요.");
-      return;
-    }
     await call("joinBand", { displayName: requiredElement("signupName").value.trim(), bandId, loginId });
     await refreshProfile();
     renderProfile();

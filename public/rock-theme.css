@@ -83,11 +83,11 @@ h1 em { color: var(--acid); font-style: normal; text-shadow: 3px 3px 0 var(--sig
 .bands-section { padding-bottom: 112px; }
 .band-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 220px)); gap: 16px; }
 .band-directory > .empty-message { grid-column: 1 / -1; width: 100%; border-top: 3px solid var(--ink); }
-.band-card { position: relative; min-height: 214px; padding: 21px 17px 18px; display: flex; flex-direction: column; align-items: center; overflow: hidden; border: 1px solid var(--ink); border-top: 5px solid var(--band-color, var(--signal)); background: var(--cream); box-shadow: 5px 5px 0 rgba(16,17,20,.15); }
+.band-card { position: relative; min-height: 214px; padding: 0; display: flex; flex-direction: column; align-items: center; overflow: hidden; border: 1px solid var(--ink); border-top: 5px solid var(--band-color, var(--signal)); background: var(--cream); box-shadow: 5px 5px 0 rgba(16,17,20,.15); }
 .band-card::after { content: ""; position: absolute; right: -38px; bottom: -51px; width: 105px; height: 105px; border: 15px solid var(--band-color, var(--signal)); border-radius: 50%; opacity: .1; }
-.band-card-logo, .band-logo-fallback { position: relative; z-index: 1; width: 100%; height: 126px; display: grid; place-items: center; object-fit: cover; border: 1px solid var(--line); background: white; }
-.band-logo-fallback { border-color: var(--band-color, var(--signal)); color: var(--ink); background: color-mix(in srgb, var(--band-color, var(--signal)) 22%, white); font: 800 39px/1 "Montserrat", "Gowun Dodum", sans-serif; }
-.band-card h3 { position: relative; z-index: 1; width: 100%; margin: 15px 0 0; font: 800 16px/1.25 "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -.5px; text-align: center; overflow-wrap: anywhere; }
+.band-card-logo, .band-logo-fallback { position: relative; z-index: 1; width: 100%; height: 154px; display: block; object-fit: cover; border: 0; border-bottom: 1px solid var(--line); background: white; }
+.band-logo-fallback { display: grid; place-items: center; border-color: var(--band-color, var(--signal)); color: var(--ink); background: color-mix(in srgb, var(--band-color, var(--signal)) 22%, white); font: 800 39px/1 "Montserrat", "Gowun Dodum", sans-serif; }
+.band-card h3 { position: relative; z-index: 1; width: 100%; margin: 14px 0 0; padding: 0 17px 18px; font: 800 16px/1.25 "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -.5px; text-align: center; overflow-wrap: anywhere; }
 .schedule-section { position: relative; padding: 98px 0 110px; overflow: hidden; color: #fbf9f3; background: var(--ink); }
 .schedule-section::before { content: ""; position: absolute; inset: 0; opacity: .25; background: linear-gradient(145deg, transparent 0 58%, rgba(216,255,69,.16) 58% 59%, transparent 59% 100%); pointer-events: none; }
 .schedule-section .page-width { position: relative; }
@@ -101,11 +101,11 @@ h1 em { color: var(--acid); font-style: normal; text-shadow: 3px 3px 0 var(--sig
 .calendar { min-width: 800px; display: grid; grid-template-columns: 64px repeat(7, minmax(105px, 1fr)); }
 .calendar > div { min-height: 50px; border-right: 1px solid #343741; border-bottom: 1px solid #343741; }
 .calendar .calendar-corner, .day-head { background: #252832; }
-.day-head { padding: 11px 9px; }.day-head span { display: block; color: rgba(255,255,255,.48); font: 10px "DM Mono", monospace; }.day-head strong { font: 700 14px "Montserrat", sans-serif; }.day-head.today strong { color: var(--acid); }
+.day-head { padding: 10px 9px; }.day-head span { display: block; margin-bottom: 3px; color: rgba(255,255,255,.58); font: 700 11px "Gowun Dodum", sans-serif; }.day-head strong { font: 700 14px "Montserrat", sans-serif; }.day-head.today strong { color: var(--acid); }
 .time-label { padding: 12px 9px; color: rgba(255,255,255,.48); font: 10px "DM Mono", monospace; background: #20222b; }
 .calendar-slot { position: relative; min-height: 50px; padding: 3px; background: #191b22; }.calendar-slot:hover { background: #282b35; }
-.calendar-booking { width: 100%; min-height: 42px; overflow: hidden; padding: 5px 6px; border: 0; border-left: 3px solid var(--acid); color: white; background: rgba(255,255,255,.1); font: 700 13px/1.2 "Gowun Dodum", sans-serif; text-align: left; }.calendar-booking:hover { background: rgba(236,84,67,.32); }
-.calendar-booking span { display: block; opacity: .72; font: 9.5px "DM Mono", monospace; }
+.calendar-booking { width: 100%; min-height: 46px; overflow: hidden; padding: 6px 7px; border: 0; border-left: 4px solid var(--acid); color: white; background: rgba(255,255,255,.1); font: 800 16px/1.12 "Gowun Dodum", sans-serif; text-align: left; letter-spacing: -.35px; }.calendar-booking:hover { background: rgba(236,84,67,.32); }
+.calendar-booking span { display: block; margin-bottom: 2px; opacity: .76; font: 10.5px "DM Mono", monospace; letter-spacing: 0; }
 
 .member-area { padding: 106px 0 82px; }
 .member-area-priority { padding-top: 48px; padding-bottom: 58px; }
@@ -121,7 +121,7 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
 .band-logo-panel { grid-column: 1 / -1; }
 .band-logo-editor { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; gap: 24px; }
 .band-logo-preview { width: 160px; height: 160px; display: grid; place-items: center; overflow: hidden; border: 1px dashed #9b9588; color: var(--muted); background: var(--paper); font: 500 10px "DM Mono", monospace; }
-.band-logo-preview-image { width: 100%; height: 100%; display: grid; place-items: center; object-fit: contain; background: white; }
+.band-logo-preview-image { width: 100%; height: 100%; display: block; object-fit: cover; background: white; }
 .band-logo-preview .band-logo-fallback { width: 100%; height: 100%; border: 0; font-size: 48px; }
 .band-logo-actions { margin-top: 18px; display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .band-logo-actions .button-ghost { min-width: 118px; color: var(--ink); border-color: var(--ink); }
@@ -136,9 +136,9 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
 @media (max-width: 600px) {
   .bands-section { padding-bottom: 76px; }
   .band-directory { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
-  .band-card { min-height: 178px; padding: 15px 12px; box-shadow: 4px 4px 0 rgba(16,17,20,.15); }
-  .band-card-logo, .band-logo-fallback { width: 100%; height: 102px; }
-  .band-card h3 { margin-top: 12px; font-size: 14px; }
+  .band-card { min-height: 178px; padding: 0; box-shadow: 4px 4px 0 rgba(16,17,20,.15); }
+  .band-card-logo, .band-logo-fallback { width: 100%; height: 116px; }
+  .band-card h3 { margin-top: 11px; padding: 0 10px 14px; font-size: 14px; }
   .member-area-priority { padding-top: 34px; padding-bottom: 45px; }
   .band-logo-editor { grid-template-columns: 1fr; gap: 17px; }
   .band-logo-preview { width: 128px; height: 128px; }
