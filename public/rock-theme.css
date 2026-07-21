@@ -40,6 +40,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .button-dark { border-color: var(--acid); color: var(--acid); background: transparent; }
 .button-dark:hover { color: var(--ink); background: var(--acid); box-shadow: 4px 4px 0 var(--signal); }
 .button-light { border-color: var(--ink); color: var(--ink); background: var(--acid); }
+.button-danger { border-color: var(--danger); color: #fffdf7; background: var(--danger); }
+.button-danger:hover { box-shadow: 4px 4px 0 var(--ink); }
 .button-ghost { color: #f9f7f0; border-color: rgba(255,255,255,.5); }
 .button-install { border-color: transparent; color: var(--ink); background: var(--acid); }
 .button-install:hover { box-shadow: 3px 3px 0 var(--signal); }
@@ -114,7 +116,7 @@ form label { display: block; margin-bottom: 14px; color: #514f55; font-size: 12p
 input, select, textarea { width: 100%; margin-top: 5px; padding: 11px; border: 1px solid #c9c0ae; border-radius: 2px; color: var(--ink); background: white; font-size: 16px; outline-color: var(--signal); }
 textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }.form-submit { width: 100%; margin-top: 4px; }.form-help { margin: 11px 0 0; color: var(--muted); font-size: 11px; }
 .my-reservation-list { display: grid; gap: 8px; }.my-reservation { padding: 13px; border-left: 4px solid var(--reservation-color, var(--signal)); background: var(--paper); }.my-reservation strong { display: block; font: 700 13px "Montserrat", sans-serif; }.my-reservation p { margin: 2px 0 8px; color: var(--muted); font: 12px "DM Mono", monospace; }.cancel-button { padding: 0; border: 0; color: var(--danger); background: none; font-size: 12px; text-decoration: underline; }
-.admin-area { padding: 30px 0 118px; }.admin-area .section-heading { margin-bottom: 28px; }.settings-panel { border-top-color: var(--ink); background: var(--acid); }.invite-result { margin-top: 21px; padding: 19px 21px; border: 1px solid var(--ink); border-left: 7px solid var(--signal); background: #fff8d8; }.invite-result strong { font: 700 19px "DM Mono", monospace; }.invite-result p { margin: 5px 0 0; font-size: 13px; }
+.admin-area { padding: 30px 0 118px; }.admin-area .section-heading { margin-bottom: 28px; }.settings-panel { border-top-color: var(--ink); background: var(--acid); }.danger-panel { border-top-color: var(--danger); }.invite-result { margin-top: 21px; padding: 19px 21px; border: 1px solid var(--ink); border-left: 7px solid var(--signal); background: #fff8d8; }.invite-result strong { font: 700 19px "DM Mono", monospace; }.invite-result p { margin: 5px 0 0; font-size: 13px; }
 .band-logo-panel { grid-column: 1 / -1; }
 .band-logo-editor { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; gap: 24px; }
 .band-logo-preview { width: 160px; height: 160px; display: grid; place-items: center; overflow: hidden; border: 1px dashed #9b9588; color: var(--muted); background: var(--paper); font: 500 10px "DM Mono", monospace; }

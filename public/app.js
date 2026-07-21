@@ -23,7 +23,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260721.6";
+const APP_VERSION = "20260721.7";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const state = {
   firebaseUser: null,
@@ -251,9 +251,28 @@ async function loadBandDirectory() {
     }
   }
 }
+function publicReservationRange() {
+  const from = elements.weekStart.value || todayInSeoul();
+  return { from, to: addDays(from, 6) };
+}
 
+async function loadPublicReservations() {
+  if (state.profile || configMissing) return;
+  try {
+    const result = await call("listPublicReservations", publicReservationRange());
+    state.reservations = Array.isArray(result.data?.reservations) ? result.data.reservations : [];
+    renderCalendar();
+  } catch (error) {
+    state.reservations = [];
+    renderCalendar();
+    showToast("예약 현황을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.", true);
+  }
+}
 function selectedLogoBand() {
   return state.bands.find((band) => band.id === elements.logoBand.value);
+}
+function selectedDeleteBand() {
+  return state.bands.find((band) => band.id === elements.deleteBand.value);
 }
 
 function renderBandLogoPreview() {
@@ -309,11 +328,14 @@ function renderBands() {
   const activeBands = state.bands.filter((band) => band.active);
   const reservationValue = elements.reservationBand.value;
   const logoValue = elements.logoBand.value;
+  const deleteValue = elements.deleteBand.value;
   const options = activeBands.map((band) => `<option value="${band.id}">${escapeHtml(band.name)}</option>`).join("");
   elements.reservationBand.innerHTML = options;
   elements.logoBand.innerHTML = options;
+  elements.deleteBand.innerHTML = options || "<option value="">삭제할 밴드 없음</option>";
   if (activeBands.some((band) => band.id === reservationValue)) elements.reservationBand.value = reservationValue;
   if (activeBands.some((band) => band.id === logoValue)) elements.logoBand.value = logoValue;
+  if (activeBands.some((band) => band.id === deleteValue)) elements.deleteBand.value = deleteValue;
   renderBandLogoPreview();
 }
 
@@ -374,11 +396,13 @@ async function refreshProfile() {
     return;
   }
   const snapshot = await getDoc(doc(db, "users", auth.currentUser.uid));
-  state.profile = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+  const profile = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+  state.profile = profile?.active === false ? null : profile;
 }
 
 function subscribeToPublicData() {
   loadBandDirectory();
+  loadPublicReservations();
   onSnapshot(query(collection(db, "announcements"), where("active", "==", true), orderBy("publishedAt", "desc")), (snapshot) => {
     state.announcements = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
     renderNotices();
@@ -390,6 +414,16 @@ function subscribeToPublicData() {
     applyRoomToControls();
     renderCalendar();
   });
+}
+
+async function showReservationOverview() {
+  if (state.profile) {
+    elements.memberArea.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  await loadPublicReservations();
+  elements.schedule.scrollIntoView({ behavior: "smooth", block: "start" });
+  showToast("시간표에서 예약된 날짜와 시간을 확인할 수 있습니다.");
 }
 
 function showReservation(id) {
@@ -600,6 +634,22 @@ async function handleBandLogoRemove() {
     showToast(errorMessage(error), true);
   }
 }
+async function handleBandDelete(event) {
+  event.preventDefault();
+  const band = selectedDeleteBand();
+  if (!band) return showToast("삭제할 밴드를 선택해 주세요.", true);
+  const message = `${band.name} 밴드를 삭제할까요?\n\n함께하는 밴드 목록에서 숨기고, 해당 밴드 관리자의 예약 권한을 비활성화합니다. 기존 예약 기록은 유지됩니다.`;
+  if (!window.confirm(message)) return;
+  try {
+    await call("deleteBand", { bandId: band.id });
+    state.pendingLogoDataUrl = null;
+    elements.bandLogoFile.value = "";
+    await loadBandDirectory();
+    showToast(`${band.name} 밴드를 삭제했습니다.`);
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  }
+}
 async function handleAnnouncement(event) {
   event.preventDefault();
   try {
@@ -634,7 +684,7 @@ async function handleSettings(event) {
 
 function bindEvents() {
   elements.openAuthButton.addEventListener("click", openAuth);
-  elements.heroLoginButton.addEventListener("click", openAuth);
+  elements.heroLoginButton.addEventListener("click", showReservationOverview);
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
   elements.showSignupButton.addEventListener("click", () => setDialogView("signupView"));
@@ -645,6 +695,7 @@ function bindEvents() {
   elements.bootstrapForm.addEventListener("submit", handleBootstrap);
   elements.reservationForm.addEventListener("submit", handleReservation);
   elements.bandForm.addEventListener("submit", handleBandCreate);
+  elements.bandDeleteForm.addEventListener("submit", handleBandDelete);
   elements.bandLogoForm.addEventListener("submit", handleBandLogoSubmit);
   elements.bandLogoFile.addEventListener("change", handleBandLogoFile);
   elements.logoBand.addEventListener("change", () => {
@@ -659,7 +710,7 @@ function bindEvents() {
     forgetLoginId();
     await signOut(auth);
   });
-  elements.weekStart.addEventListener("change", () => { if (state.profile) subscribeToAppData(); renderCalendar(); });
+  elements.weekStart.addEventListener("change", () => { if (state.profile) subscribeToAppData(); else loadPublicReservations(); renderCalendar(); });
   elements.startHour.addEventListener("change", () => {
     if (Number(elements.endHour.value) <= Number(elements.startHour.value)) elements.endHour.value = String(Number(elements.startHour.value) + 1);
   });
@@ -714,7 +765,10 @@ function initialise() {
     await refreshProfile();
     renderProfile();
     if (state.profile) subscribeToAppData();
-    else clearAppSubscriptions();
+    else {
+      clearAppSubscriptions();
+      loadPublicReservations();
+    }
   });
 }
 

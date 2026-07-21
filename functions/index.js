@@ -106,6 +106,20 @@ function validateReservationInput(data) {
   return { date, startHour, endHour };
 }
 
+function validateReservationRangeInput(data) {
+  const from = String(data.from || dateInSeoul());
+  const to = String(data.to || from);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
+    badRequest("예약 조회 날짜를 확인해 주세요.");
+  }
+  const fromDate = new Date(`${from}T00:00:00+09:00`);
+  const toDate = new Date(`${to}T00:00:00+09:00`);
+  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 31) {
+    badRequest("예약 조회는 한 번에 31일까지만 가능합니다.");
+  }
+  return { from, to };
+}
+
 function displayTime(hour) {
   return `${String(hour).padStart(2, "0")}:00`;
 }
@@ -181,6 +195,50 @@ exports.createBand = onCall(async (request) => {
   return { bandId: bandRef.id, code, expiresAt: expiresAt.toDate().toISOString() };
 });
 
+exports.deleteBand = onCall(async (request) => {
+  const { auth } = await requireMainAdmin(request);
+  const bandId = String(request.data?.bandId || "").trim();
+  if (!bandId) badRequest("삭제할 밴드를 선택해 주세요.");
+
+  const bandRef = db.collection("bands").doc(bandId);
+  const inviteQuery = db.collection("bandInvites").where("bandId", "==", bandId).where("status", "==", "pending");
+  let bandName = "";
+
+  await db.runTransaction(async (transaction) => {
+    const bandSnapshot = await transaction.get(bandRef);
+    if (!bandSnapshot.exists || !bandSnapshot.data().active) {
+      throw new HttpsError("not-found", "삭제할 밴드를 찾을 수 없습니다.");
+    }
+    const band = bandSnapshot.data();
+    bandName = String(band.name || "");
+    const pendingInvites = await transaction.get(inviteQuery);
+    const managerRef = band.managerUid ? db.collection("users").doc(band.managerUid) : null;
+    const managerSnapshot = managerRef ? await transaction.get(managerRef) : null;
+
+    transaction.update(bandRef, {
+      active: false,
+      deletedAt: FieldValue.serverTimestamp(),
+      deletedBy: auth.uid,
+    });
+    pendingInvites.docs.forEach((invite) => {
+      transaction.update(invite.ref, {
+        status: "cancelled",
+        cancelledAt: FieldValue.serverTimestamp(),
+        cancelledBy: auth.uid,
+      });
+    });
+    if (managerRef && managerSnapshot?.exists && managerSnapshot.data().role === "band_admin" && managerSnapshot.data().bandId === bandId) {
+      transaction.update(managerRef, {
+        active: false,
+        deactivatedAt: FieldValue.serverTimestamp(),
+        deactivatedBy: auth.uid,
+      });
+    }
+  });
+
+  return { bandId, bandName };
+});
+
 exports.listBandDirectory = onCall(async () => {
   const snapshot = await db.collection("bands").where("active", "==", true).get();
   const bands = snapshot.docs.map((item) => {
@@ -193,6 +251,31 @@ exports.listBandDirectory = onCall(async () => {
     };
   }).sort((a, b) => a.name.localeCompare(b.name, "ko"));
   return { bands };
+});
+
+exports.listPublicReservations = onCall(async (request) => {
+  const { from, to } = validateReservationRangeInput(request.data || {});
+  const snapshot = await db.collection("reservations")
+    .where("status", "==", "confirmed")
+    .where("date", ">=", from)
+    .where("date", "<=", to)
+    .orderBy("date")
+    .orderBy("startHour")
+    .get();
+  const reservations = snapshot.docs.map((item) => {
+    const reservation = item.data();
+    return {
+      id: item.id,
+      bandId: String(reservation.bandId || ""),
+      bandName: String(reservation.bandName || "").slice(0, 40),
+      bandColor: String(reservation.bandColor || "#8B5CF6"),
+      date: String(reservation.date || ""),
+      startHour: Number(reservation.startHour),
+      endHour: Number(reservation.endHour),
+      status: "confirmed",
+    };
+  });
+  return { reservations };
 });
 
 exports.updateBandLogo = onCall(async (request) => {
