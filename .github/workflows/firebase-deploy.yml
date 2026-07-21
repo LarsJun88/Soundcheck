@@ -1,0 +1,41 @@
+name: Deploy Firebase
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Cloud Functions dependencies
+        run: npm install --prefix functions
+
+      # firebase-config.js stays out of Git. Add the complete contents of that
+      # file as the FIREBASE_WEB_CONFIG GitHub Actions secret.
+      - name: Create Firebase web configuration
+        env:
+          FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
+        run: printf '%s' "$FIREBASE_WEB_CONFIG" > public/firebase-config.js
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy Hosting, Firestore, and Functions
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: npx --yes firebase-tools deploy --project "$FIREBASE_PROJECT_ID" --only hosting,firestore,functions --non-interactive

@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isMainAdmin() {
+      return signedIn() && profile().data.role == 'main_admin';
+    }
+
+    // A profile is only written by trusted callable Cloud Functions. It includes
+    // the role and Telegram chat ID, neither of which must be client-editable.
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || isMainAdmin());
+      allow list: if isMainAdmin();
+      allow write: if false;
+    }
+
+    // Band membership is assigned by a callable function. Authenticated users
+    // can read names for the timetable, but cannot change ownership themselves.
+    match /bands/{bandId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Reservations and one-hour slot locks are only changed by Cloud Functions.
+    // This is what makes the conflict check authoritative.
+    match /reservations/{reservationId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /scheduleSlots/{slotId} {
+      allow read, write: if false;
+    }
+
+    match /bandInvites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    match /telegramLinks/{linkId} {
+      allow read, write: if false;
+    }
+
+    match /notificationClaims/{claimId} {
+      allow read, write: if false;
+    }
+
+    // Notices are public so everyone can read them before logging in. Only the
+    // main administrator can publish, edit, or remove a notice.
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow create: if isMainAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'body', 'active', 'publishedAt', 'authorUid'])
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.body is string
+        && request.resource.data.active is bool;
+      allow update, delete: if isMainAdmin();
+    }
+
+    // This single document controls opening hours. Reservations are validated
+    // again in the server-side function before a slot is locked.
+    match /settings/room {
+      allow read: if true;
+      allow create, update: if isMainAdmin()
+        && request.resource.data.keys().hasOnly(['openHour', 'closeHour', 'slotMinutes', 'updatedAt', 'updatedBy'])
+        && request.resource.data.openHour is int
+        && request.resource.data.closeHour is int
+        && request.resource.data.slotMinutes == 60
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /system/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

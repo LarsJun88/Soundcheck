@@ -1,0 +1,18 @@
+# Firebase local files and runtime secrets
+.firebaserc
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Function dependencies and local environment files
+functions/node_modules/
+functions/.env
+functions/.env.*
+
+# Firebase web app configuration (Firebase API keys are client identifiers,
+# but each deployment has its own values and should be configured locally.)
+public/firebase-config.js
+
+# Editor / operating-system files
+.DS_Store
+Thumbs.db

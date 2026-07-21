@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171526" />
+    <meta name="description" content="밴드 합주실 예약 및 공지 확인 서비스" />
+    <title>Soundcheck · 합주실 예약</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <header class="topbar page-width">
+      <a class="brand" href="#top" aria-label="Soundcheck 홈">
+        <span class="brand-mark">S</span>
+        <span>soundcheck<small>REHEARSAL ROOM</small></span>
+      </a>
+      <div class="topbar-actions">
+        <span id="profileChip" class="profile-chip hidden"></span>
+        <button id="openAuthButton" class="button button-dark">로그인 / 시작</button>
+        <button id="signOutButton" class="text-button hidden">로그아웃</button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero page-width">
+        <div>
+          <p class="eyebrow">ONE ROOM, GOOD TIME</p>
+          <h1>함께 쓰는 공간,<br /><em>깔끔하게</em> 예약하세요.</h1>
+          <p class="hero-copy">밴드별 관리자만 예약하고, 모두가 한눈에 일정을 확인하는 합주실 스케줄러입니다.</p>
+          <div class="hero-actions">
+            <a href="#schedule" class="button button-primary">이번 주 일정 보기 <span>↓</span></a>
+            <button id="heroLoginButton" class="button button-ghost">내 예약 관리</button>
+          </div>
+        </div>
+        <aside class="room-card" aria-label="예약 방식 안내">
+          <div class="room-card-top"><span class="live-dot"></span> LIVE TIMETABLE</div>
+          <div class="room-hours"><span>OPEN</span><strong id="heroOpenHour">09:00</strong><i></i><strong id="heroCloseHour">23:00</strong><span>CLOSE</span></div>
+          <p>한 시간 단위로 예약할 수 있습니다.<br />다음 팀을 위해 정시 퇴실을 지켜 주세요.</p>
+        </aside>
+      </section>
+
+      <section class="notices-section page-width" aria-labelledby="noticeTitle">
+        <div class="section-heading">
+          <div><p class="eyebrow">BEFORE YOU PLAY</p><h2 id="noticeTitle">공지사항</h2></div>
+          <span class="notice-count" id="noticeCount">불러오는 중</span>
+        </div>
+        <div id="noticeList" class="notice-list"><p class="empty-message">공지사항을 불러오는 중입니다.</p></div>
+      </section>
+
+      <section id="schedule" class="schedule-section">
+        <div class="page-width">
+          <div class="section-heading schedule-heading">
+            <div><p class="eyebrow">SHARED CALENDAR</p><h2>합주실 시간표</h2></div>
+            <div class="week-picker">
+              <label for="weekStart">기준 날짜</label>
+              <input id="weekStart" type="date" />
+            </div>
+          </div>
+          <div class="calendar-note"><span class="legend-free"></span> 비어 있는 시간 <span class="legend-booked"></span> 예약 완료 · 클릭하면 예약 상세를 볼 수 있습니다.</div>
+          <div id="calendarWrap" class="calendar-wrap" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section id="memberArea" class="member-area page-width hidden" aria-label="예약 관리">
+        <div class="member-intro">
+          <p class="eyebrow">MANAGER DESK</p>
+          <h2>예약 관리</h2>
+          <p id="memberDescription"></p>
+        </div>
+        <div class="manager-grid">
+          <form id="reservationForm" class="panel reservation-panel">
+            <div class="panel-heading"><h3>새 예약</h3><span>1시간 단위</span></div>
+            <label id="reservationBandField" class="hidden">예약 밴드
+              <select id="reservationBand"></select>
+            </label>
+            <label>날짜
+              <input id="reservationDate" type="date" required />
+            </label>
+            <div class="form-row">
+              <label>시작
+                <select id="startHour" required></select>
+              </label>
+              <label>종료
+                <select id="endHour" required></select>
+              </label>
+            </div>
+            <button class="button button-primary form-submit" type="submit">시간 예약하기</button>
+            <p class="form-help">선택한 모든 시간대가 비어 있을 때에만 예약됩니다.</p>
+          </form>
+          <div class="panel upcoming-panel">
+            <div class="panel-heading"><h3>내 예약</h3><span id="myReservationCount">0건</span></div>
+            <div id="myReservationList" class="my-reservation-list"><p class="empty-message">예정된 예약이 없습니다.</p></div>
+          </div>
+        </div>
+        <div class="telegram-card">
+          <div><p class="eyebrow">TELEGRAM REMINDER</p><h3>예약 전 알림을 받아보세요</h3><p id="telegramStatus">텔레그램 봇을 연결하면 예약 1일 전과 1시간 전에 알려드립니다.</p></div>
+          <button id="telegramConnectButton" class="button button-light">텔레그램 연결</button>
+        </div>
+      </section>
+
+      <section id="adminArea" class="admin-area page-width hidden" aria-label="메인 관리자 도구">
+        <div class="section-heading"><div><p class="eyebrow">MAIN ADMIN ONLY</p><h2>운영 관리</h2></div></div>
+        <div class="admin-grid">
+          <form id="bandForm" class="panel">
+            <div class="panel-heading"><h3>밴드 추가</h3><span>초대 코드 발급</span></div>
+            <label>밴드 이름<input id="bandName" maxlength="40" required placeholder="예: 오후의 잡음" /></label>
+            <label>밴드 관리자 이메일<input id="managerEmail" type="email" required placeholder="manager@example.com" /></label>
+            <button class="button button-primary form-submit" type="submit">밴드 추가 및 초대 코드 만들기</button>
+            <p class="form-help">표시되는 코드를 해당 이메일의 관리자에게 전달하세요.</p>
+          </form>
+          <form id="announcementForm" class="panel">
+            <div class="panel-heading"><h3>공지 등록</h3><span>메인 페이지 공개</span></div>
+            <label>제목<input id="announcementTitle" maxlength="80" required placeholder="예: 에어컨 필터 청소 안내" /></label>
+            <label>내용<textarea id="announcementBody" maxlength="1000" required placeholder="예약 전 확인할 내용을 입력하세요."></textarea></label>
+            <button class="button button-primary form-submit" type="submit">공지 게시하기</button>
+          </form>
+          <form id="settingsForm" class="panel settings-panel">
+            <div class="panel-heading"><h3>운영 시간</h3><span>60분 고정</span></div>
+            <div class="form-row">
+              <label>시작 시간<select id="openHour"></select></label>
+              <label>마감 시간<select id="closeHour"></select></label>
+            </div>
+            <button class="button button-light form-submit" type="submit">운영 시간 저장</button>
+            <p class="form-help">새 예약에 즉시 적용됩니다. 기존 예약은 유지됩니다.</p>
+          </form>
+        </div>
+        <div id="inviteResult" class="invite-result hidden" role="status"></div>
+      </section>
+    </main>
+
+    <footer class="footer page-width"><span>SOUNDCHECK</span><p>SHARE THE ROOM · RESPECT THE NEXT BAND</p></footer>
+
+    <dialog id="authDialog" class="auth-dialog">
+      <button id="closeAuthButton" class="dialog-close" aria-label="닫기">×</button>
+      <div id="authView">
+        <p class="eyebrow">MANAGER ACCESS</p>
+        <h2>관리자 로그인</h2>
+        <p class="dialog-copy">밴드 관리자는 초대받은 이메일로 계정을 만들고 비밀번호를 직접 설정합니다.</p>
+        <form id="loginForm" class="auth-form">
+          <label>이메일<input id="loginEmail" type="email" autocomplete="email" required /></label>
+          <label>비밀번호<input id="loginPassword" type="password" autocomplete="current-password" minlength="8" required /></label>
+          <button class="button button-primary form-submit" type="submit">로그인</button>
+        </form>
+        <div class="auth-links"><button id="showSignupButton" class="text-button" type="button">처음이신가요? 계정 만들기</button><button id="resetPasswordButton" class="text-button" type="button">비밀번호 재설정</button></div>
+      </div>
+      <div id="signupView" class="hidden">
+        <p class="eyebrow">MANAGER ACTIVATION</p>
+        <h2>관리자 계정 만들기</h2>
+        <p class="dialog-copy">밴드 초대에 등록된 이메일과 초대 코드를 사용해 활성화하세요.</p>
+        <form id="signupForm" class="auth-form">
+          <label>이름<input id="signupName" maxlength="40" autocomplete="name" required /></label>
+          <label>초대받은 이메일<input id="signupEmail" type="email" autocomplete="email" required /></label>
+          <label>새 비밀번호<input id="signupPassword" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <label>밴드 초대 코드<input id="signupInviteCode" maxlength="10" autocapitalize="characters" required /></label>
+          <button class="button button-primary form-submit" type="submit">계정 만들고 활성화하기</button>
+        </form>
+        <button id="showLoginButton" class="text-button" type="button">이미 계정이 있어요 · 로그인</button>
+      </div>
+      <div id="activationView" class="hidden">
+        <p class="eyebrow">ACCOUNT ACTIVATION</p>
+        <h2>권한을 활성화하세요</h2>
+        <p class="dialog-copy">로그인은 되었지만 아직 예약 권한이 없습니다. 초대 코드로 밴드 관리자를 활성화하거나, 최초 메인 관리자를 등록하세요.</p>
+        <form id="claimInviteForm" class="auth-form compact-form">
+          <label>표시할 이름<input id="claimName" maxlength="40" required /></label>
+          <label>밴드 초대 코드<input id="claimInviteCode" maxlength="10" autocapitalize="characters" required /></label>
+          <button class="button button-primary form-submit" type="submit">밴드 관리자 활성화</button>
+        </form>
+        <details class="bootstrap-details">
+          <summary>최초 메인 관리자 등록</summary>
+          <form id="bootstrapForm" class="auth-form compact-form">
+            <label>표시할 이름<input id="bootstrapName" maxlength="40" required /></label>
+            <label>초기 관리자 코드<input id="bootstrapCode" type="password" required /></label>
+            <button class="button button-light form-submit" type="submit">메인 관리자 활성화</button>
+          </form>
+        </details>
+      </div>
+    </dialog>
+
+    <dialog id="reservationDialog" class="reservation-dialog">
+      <button id="closeReservationButton" class="dialog-close" aria-label="닫기">×</button>
+      <p class="eyebrow">RESERVATION</p>
+      <h2 id="reservationDialogTitle">예약 상세</h2>
+      <p id="reservationDialogInfo" class="dialog-copy"></p>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
