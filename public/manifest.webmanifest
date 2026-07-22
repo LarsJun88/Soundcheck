@@ -5,11 +5,11 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#101114",
-  "theme_color": "#101114",
+  "background_color": "#07143d",
+  "theme_color": "#07143d",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "./icons/soundcheck-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "./icons/soundcheck-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "./icons/soundcheck-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/soundcheck-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

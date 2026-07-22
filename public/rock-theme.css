@@ -147,3 +147,64 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
 }
 @media (max-width: 600px) { .hero-reservation-button { max-width: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+
+/* IMG_6484 ICON THEME · 20260722 */
+:root {
+  --ink: #07143d;
+  --ink-soft: #0b2857;
+  --ink-raised: #123769;
+  --paper: #eaf5f7;
+  --paper-deep: #d7e9ed;
+  --cream: #f8fdfe;
+  --muted: #617087;
+  --line: #bcd6dc;
+  --acid: #52c8d0;
+  --signal: #7650b4;
+  --amber: #18a5b5;
+  --danger: #c44a6c;
+  --shadow: 0 22px 52px rgba(7, 20, 61, .22);
+}
+
+body { background: linear-gradient(180deg, #f7fcfd 0, var(--paper) 38%, #e2f0f2 100%); }
+.topbar { border-bottom-color: rgba(106,210,220,.24); color: #f7fcff; background: rgba(7,20,61,.92); }
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  display: block;
+  transform: none;
+  border: 1px solid rgba(255,255,255,.38);
+  border-radius: 11px;
+  color: transparent;
+  background: url("./icons/soundcheck-192.png") center/cover no-repeat;
+  font-size: 0;
+  box-shadow: 0 8px 22px rgba(26,159,184,.28);
+}
+.brand-mark::after { content: none; }
+.button-primary { border-color: #56bacb; color: #fff; background: linear-gradient(135deg, #0d91ad 0%, var(--signal) 100%); }
+.button-light, .button-install { background: linear-gradient(135deg, #8ae2df, var(--acid)); }
+.hero::before { background: linear-gradient(135deg, #061137 0%, #073e69 53%, #2d165c 100%); }
+.hero::after { opacity: .62; background: radial-gradient(circle at 76% 16%, rgba(82,200,208,.32), transparent 20rem), radial-gradient(circle at 26% 82%, rgba(118,80,180,.22), transparent 22rem), repeating-linear-gradient(122deg, transparent 0 46px, rgba(255,255,255,.03) 47px 48px); }
+h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
+.room-card { border-color: rgba(123,221,224,.34); color: #f7fcff; background: linear-gradient(155deg, rgba(15,68,112,.96), rgba(38,22,88,.98)); box-shadow: 9px 9px 0 var(--signal); }
+.live-dot { background: var(--acid); box-shadow: 0 0 0 4px rgba(82,200,208,.17); }
+.schedule-section { color: #f7fcff; background: linear-gradient(135deg, #051137 0%, #073c66 62%, #2e165c 100%); }
+.schedule-section::before { opacity: .34; background: linear-gradient(145deg, transparent 0 58%, rgba(82,200,208,.18) 58% 59%, transparent 59% 100%); }
+.week-picker input { border-color: #46779b; background: #102e5c; }
+.legend-free, .legend-booked { background: #315277; }
+.legend-booked { background: var(--acid); box-shadow: 0 0 0 3px rgba(82,200,208,.14); }
+.calendar-wrap { border-color: #3e6c92; background: #071f49; box-shadow: 8px 8px 0 rgba(118,80,180,.78); scrollbar-color: var(--acid) #0d315c; }
+.calendar > div { border-right-color: #244a72; border-bottom-color: #244a72; }
+.calendar .calendar-corner, .day-head { background: #0d315d; }
+.time-label { color: rgba(255,255,255,.52); background: #0a274f; }
+.calendar-slot { background: #071f49; }
+.calendar-slot:hover { background: #0d335e; }
+.calendar-booking { background: rgba(255,255,255,.11); }
+.calendar-booking:hover { background: rgba(118,80,180,.4); }
+.settings-panel { background: linear-gradient(135deg, #dff8f8, #b8e9ea); }
+.invite-result { background: #edfafa; }
+.toast.error { border-left-color: #f18aaa; box-shadow: 4px 4px 0 #c44a6c; }
+
+@media (max-width: 600px) {
+  .brand-mark { width: 34px; height: 34px; }
+  .hero::after { background: radial-gradient(circle at 88% 13%, rgba(82,200,208,.36), transparent 11rem), radial-gradient(circle at 18% 78%, rgba(118,80,180,.22), transparent 13rem), repeating-linear-gradient(122deg, transparent 0 30px, rgba(255,255,255,.03) 31px 32px); }
+}
