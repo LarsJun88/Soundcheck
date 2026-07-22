@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const sharp = require("sharp");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
@@ -125,6 +126,23 @@ function displayTime(hour) {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
+async function createServerLogoThumbnail(logoDataUrl) {
+  const match = LOGO_DATA_URL_PATTERN.exec(logoDataUrl);
+  if (!match) throw new Error("Unsupported legacy logo format");
+  const base64 = logoDataUrl.slice(logoDataUrl.indexOf(",") + 1);
+  const source = Buffer.from(base64, "base64");
+  const thumbnail = await sharp(source)
+    .rotate()
+    .resize({ width: 240, height: 240, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 68, effort: 4 })
+    .toBuffer();
+  const result = `data:image/webp;base64,${thumbnail.toString("base64")}`;
+  if (result.length > MAX_LOGO_THUMBNAIL_DATA_URL_LENGTH) {
+    throw new Error("Generated logo thumbnail is too large");
+  }
+  return result;
+}
+
 exports.bootstrapMainAdmin = onCall(
   { secrets: [BOOTSTRAP_CODE] },
   async (request) => {
@@ -230,21 +248,48 @@ exports.deleteBand = onCall(async (request) => {
 
 exports.listBandDirectory = onCall(async () => {
   const snapshot = await db.collection("bands").where("active", "==", true).get();
-  const bands = snapshot.docs.map((item) => {
+  const migrations = [];
+  const bands = await Promise.all(snapshot.docs.map(async (item) => {
     const band = item.data();
+    const legacyLogoDataUrl = typeof band.logoDataUrl === "string" ? band.logoDataUrl : "";
+    let logoThumbnailDataUrl = typeof band.logoThumbnailDataUrl === "string" ? band.logoThumbnailDataUrl : "";
+    if (!logoThumbnailDataUrl && legacyLogoDataUrl) {
+      try {
+        logoThumbnailDataUrl = await createServerLogoThumbnail(legacyLogoDataUrl);
+        migrations.push({ ref: item.ref, bandId: item.id, legacyLogoDataUrl, logoThumbnailDataUrl, updatedBy: band.logoUpdatedBy || "legacy-migration" });
+      } catch (error) {
+        console.error(`Could not create a thumbnail for band ${item.id}`, error);
+        logoThumbnailDataUrl = legacyLogoDataUrl;
+      }
+    }
     return {
       id: item.id,
       name: String(band.name || "").slice(0, 40),
       color: String(band.color || "#8B5CF6"),
-      logoThumbnailDataUrl: typeof band.logoThumbnailDataUrl === "string"
-        ? band.logoThumbnailDataUrl
-        : (typeof band.logoDataUrl === "string" ? band.logoDataUrl : ""),
-      hasLogo: Boolean(band.logoThumbnailDataUrl || band.logoDataUrl),
+      logoThumbnailDataUrl,
+      hasLogo: Boolean(logoThumbnailDataUrl || legacyLogoDataUrl),
     };
-  }).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  }));
+
+  await Promise.allSettled(migrations.map((migration) => db.runTransaction(async (transaction) => {
+    const freshSnapshot = await transaction.get(migration.ref);
+    if (!freshSnapshot.exists || freshSnapshot.data().logoDataUrl !== migration.legacyLogoDataUrl) return;
+    transaction.set(db.collection("bandLogoOriginals").doc(migration.bandId), {
+      bandId: migration.bandId,
+      logoDataUrl: migration.legacyLogoDataUrl,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: migration.updatedBy,
+    }, { merge: true });
+    transaction.update(migration.ref, {
+      logoDataUrl: FieldValue.delete(),
+      logoThumbnailDataUrl: migration.logoThumbnailDataUrl,
+      logoMigratedAt: FieldValue.serverTimestamp(),
+    });
+  })));
+
+  bands.sort((a, b) => a.name.localeCompare(b.name, "ko"));
   return { bands };
 });
-
 exports.listPublicReservations = onCall(async (request) => {
   const { from, to } = validateReservationRangeInput(request.data || {});
   const snapshot = await db.collection("reservations")
