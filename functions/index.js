@@ -15,7 +15,9 @@ const COLORS = ["#8B5CF6", "#0EA5E9", "#10B981", "#F97316", "#EC4899", "#EAB308"
 const DEFAULT_ROOM_SETTINGS = { openHour: 9, closeHour: 23, slotMinutes: 60 };
 const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
 const INTERNAL_EMAIL_DOMAIN = "@id.soundcheck.local";
-const MAX_LOGO_DATA_URL_LENGTH = 350000;
+const MAX_LOGO_ORIGINAL_DATA_URL_LENGTH = 780000;
+const MAX_LOGO_THUMBNAIL_DATA_URL_LENGTH = 90000;
+const LOGO_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
 function badRequest(message) {
   throw new HttpsError("invalid-argument", message);
@@ -184,6 +186,7 @@ exports.deleteBand = onCall(async (request) => {
   if (!bandId) badRequest("삭제할 밴드를 선택해 주세요.");
 
   const bandRef = db.collection("bands").doc(bandId);
+  const logoOriginalRef = db.collection("bandLogoOriginals").doc(bandId);
   const inviteQuery = db.collection("bandInvites").where("bandId", "==", bandId).where("status", "==", "pending");
   const memberQuery = db.collection("users").where("bandId", "==", bandId);
   let bandName = "";
@@ -203,6 +206,7 @@ exports.deleteBand = onCall(async (request) => {
       deletedAt: FieldValue.serverTimestamp(),
       deletedBy: auth.uid,
     });
+    transaction.delete(logoOriginalRef);
     pendingInvites.docs.forEach((invite) => {
       transaction.update(invite.ref, {
         status: "cancelled",
@@ -232,7 +236,10 @@ exports.listBandDirectory = onCall(async () => {
       id: item.id,
       name: String(band.name || "").slice(0, 40),
       color: String(band.color || "#8B5CF6"),
-      logoDataUrl: typeof band.logoDataUrl === "string" ? band.logoDataUrl : "",
+      logoThumbnailDataUrl: typeof band.logoThumbnailDataUrl === "string"
+        ? band.logoThumbnailDataUrl
+        : (typeof band.logoDataUrl === "string" ? band.logoDataUrl : ""),
+      hasLogo: Boolean(band.logoThumbnailDataUrl || band.logoDataUrl),
     };
   }).sort((a, b) => a.name.localeCompare(b.name, "ko"));
   return { bands };
@@ -263,34 +270,74 @@ exports.listPublicReservations = onCall(async (request) => {
   return { reservations };
 });
 
+exports.getBandLogo = onCall(async (request) => {
+  const bandId = String(request.data?.bandId || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(bandId)) badRequest("밴드 로고 정보가 올바르지 않습니다.");
+
+  const [bandSnapshot, originalSnapshot] = await Promise.all([
+    db.collection("bands").doc(bandId).get(),
+    db.collection("bandLogoOriginals").doc(bandId).get(),
+  ]);
+  if (!bandSnapshot.exists || bandSnapshot.data().active === false) {
+    throw new HttpsError("not-found", "밴드 로고를 찾을 수 없습니다.");
+  }
+  const band = bandSnapshot.data();
+  const original = originalSnapshot.exists ? originalSnapshot.data() : {};
+  const logoDataUrl = String(original.logoDataUrl || band.logoDataUrl || band.logoThumbnailDataUrl || "");
+  if (!logoDataUrl) throw new HttpsError("not-found", "등록된 밴드 로고가 없습니다.");
+
+  return {
+    bandId,
+    bandName: String(band.name || "").slice(0, 40),
+    logoDataUrl,
+  };
+});
+
 exports.updateBandLogo = onCall(async (request) => {
   const { auth } = await requireMainAdmin(request);
   const bandId = String(request.data?.bandId || "").trim();
   const logoDataUrl = String(request.data?.logoDataUrl || "");
+  const logoThumbnailDataUrl = String(request.data?.logoThumbnailDataUrl || "");
   if (!bandId) badRequest("로고를 변경할 밴드를 선택해 주세요.");
-  if (logoDataUrl && (
-    logoDataUrl.length > MAX_LOGO_DATA_URL_LENGTH
-    || !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logoDataUrl)
+  const hasOriginal = Boolean(logoDataUrl);
+  const hasThumbnail = Boolean(logoThumbnailDataUrl);
+  if (hasOriginal !== hasThumbnail) badRequest("로고 원본과 썸네일을 함께 등록해 주세요.");
+  if (hasOriginal && (
+    logoDataUrl.length > MAX_LOGO_ORIGINAL_DATA_URL_LENGTH
+    || logoThumbnailDataUrl.length > MAX_LOGO_THUMBNAIL_DATA_URL_LENGTH
+    || !LOGO_DATA_URL_PATTERN.test(logoDataUrl)
+    || !LOGO_DATA_URL_PATTERN.test(logoThumbnailDataUrl)
   )) {
     badRequest("로고는 PNG·JPG·WebP 형식의 작은 이미지로 등록해 주세요.");
   }
 
   const bandRef = db.collection("bands").doc(bandId);
+  const originalRef = db.collection("bandLogoOriginals").doc(bandId);
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(bandRef);
     if (!snapshot.exists || !snapshot.data().active) {
       throw new HttpsError("not-found", "로고를 변경할 밴드를 찾을 수 없습니다.");
     }
     transaction.update(bandRef, {
-      logoDataUrl,
+      logoDataUrl: FieldValue.delete(),
+      logoThumbnailDataUrl,
       logoUpdatedAt: FieldValue.serverTimestamp(),
       logoUpdatedBy: auth.uid,
     });
+    if (hasOriginal) {
+      transaction.set(originalRef, {
+        bandId,
+        logoDataUrl,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: auth.uid,
+      });
+    } else {
+      transaction.delete(originalRef);
+    }
   });
 
-  return { bandId, logoDataUrl };
+  return { bandId, hasLogo: hasOriginal };
 });
-
 exports.joinBand = onCall(async (request) => {
   const auth = requireAuth(request);
   const loginId = requireVerifiedLoginId(request);

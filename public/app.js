@@ -23,7 +23,7 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260722.2";
+const APP_VERSION = "20260722.3";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const state = {
   firebaseUser: null,
@@ -32,11 +32,16 @@ const state = {
   bands: [],
   directoryBands: [],
   pendingLogoDataUrl: null,
+  pendingLogoThumbnailDataUrl: null,
+  logoOriginals: new Map(),
+  liveReservations: [],
+  liveLoadPromise: null,
   reservations: [],
   announcements: [],
   room: DEFAULT_ROOM,
   unsubs: [],
 };
+const migratingLegacyLogoIds = new Set();
 
 const configMissing = Object.values(firebaseConfig).some((value) => String(value).includes("YOUR_"));
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map((element) => [element.id, element]));
@@ -126,10 +131,26 @@ function pad(value) {
   return String(value).padStart(2, "0");
 }
 
-function todayInSeoul() {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+function seoulNowParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+  };
+}
+
+function todayInSeoul() {
+  return seoulNowParts().date;
 }
 
 function addDays(dateText, amount) {
@@ -208,6 +229,7 @@ function applyRoomToControls() {
   elements.closeHour.value = String(closeHour);
   elements.heroOpenHour.textContent = `${pad(openHour)}:00`;
   elements.heroCloseHour.textContent = `${pad(closeHour)}:00`;
+  renderLiveTimetable();
 }
 
 function renderNotices() {
@@ -221,14 +243,22 @@ function renderNotices() {
     </article>`).join("") : "<p class=\"empty-message\">등록된 공지사항이 없습니다.</p>";
 }
 
-function bandLogoMarkup(band, className = "band-card-logo") {
-  if (band.logoDataUrl) {
-    return `<img class="${className}" src="${escapeHtml(band.logoDataUrl)}" alt="${escapeHtml(band.name)} 로고" />`;
+function bandLogoSource(band) {
+  return String(band.logoThumbnailDataUrl || band.logoDataUrl || "");
+}
+
+function bandHasLogo(band) {
+  return Boolean(band.hasLogo || band.logoThumbnailDataUrl || band.logoDataUrl);
+}
+
+function bandLogoMarkup(band, className = "band-card-logo", lazy = false) {
+  const source = bandLogoSource(band);
+  if (source) {
+    return `<img class="${className}" src="${escapeHtml(source)}" alt="${escapeHtml(band.name)} 로고"${lazy ? ' loading="lazy" decoding="async"' : ""} />`;
   }
   const initial = Array.from(String(band.name || "♪"))[0] || "♪";
   return `<span class="${className} band-logo-fallback" style="--band-color:${escapeHtml(band.color || "#8B5CF6")}">${escapeHtml(initial)}</span>`;
 }
-
 function visibleBands() {
   const source = state.bands.length ? state.bands : state.directoryBands;
   return source.filter((band) => band.active !== false).slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
@@ -250,14 +280,19 @@ function renderJoinBandOptions() {
 function renderBandDirectory() {
   const bands = visibleBands();
   elements.bandCount.textContent = bands.length ? `${bands.length}팀` : "등록된 밴드 없음";
-  elements.bandDirectory.innerHTML = bands.length ? bands.map((band) => `
+  elements.bandDirectory.innerHTML = bands.length ? bands.map((band) => {
+    const logo = bandLogoSource(band);
+    const logoMarkup = logo
+      ? `<button class="band-logo-button" type="button" data-band-logo="${escapeHtml(band.id)}" aria-label="${escapeHtml(band.name)} 로고 원본 보기">${bandLogoMarkup(band, "band-card-logo", true)}<span class="band-logo-open-hint">원본 보기</span></button>`
+      : bandLogoMarkup(band);
+    return `
     <article class="band-card" style="--band-color:${escapeHtml(band.color || "#8B5CF6")}">
-      ${bandLogoMarkup(band)}
+      ${logoMarkup}
       <h3>${escapeHtml(band.name)}</h3>
-    </article>`).join("") : "<p class=\"empty-message\">아직 등록된 밴드가 없습니다.</p>";
+    </article>`;
+  }).join("") : "<p class=\"empty-message\">아직 등록된 밴드가 없습니다.</p>";
   renderJoinBandOptions();
 }
-
 async function loadBandDirectory() {
   try {
     const result = await call("listBandDirectory");
@@ -275,11 +310,55 @@ function publicReservationRange() {
   return { from, to: addDays(from, 6) };
 }
 
+function updateLiveReservations(reservations, from, to) {
+  const today = todayInSeoul();
+  if (from <= today && to >= today) {
+    state.liveReservations = reservations.filter((reservation) => reservation.date === today);
+    renderLiveTimetable();
+  }
+}
+
+function renderLiveTimetable() {
+  const badge = elements.liveReservationBadge;
+  if (!badge) return;
+  const now = seoulNowParts();
+  const currentMinutes = (now.hour * 60) + now.minute;
+  const reservation = state.liveReservations.find((item) => (
+    item.date === now.date
+    && (Number(item.startHour) * 60) <= currentMinutes
+    && (Number(item.endHour) * 60) > currentMinutes
+  ));
+  badge.classList.toggle("is-free", !reservation);
+  if (!reservation) {
+    badge.textContent = "현재 예약 없음";
+    badge.style.removeProperty("--live-color");
+    return;
+  }
+  badge.textContent = `${reservation.bandName} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00`;
+  badge.style.setProperty("--live-color", String(reservation.bandColor || "#52c8d0"));
+}
+
+async function loadLiveReservations() {
+  if (configMissing) return;
+  if (state.liveLoadPromise) return state.liveLoadPromise;
+  const today = todayInSeoul();
+  state.liveLoadPromise = call("listPublicReservations", { from: today, to: today })
+    .then((result) => {
+      state.liveReservations = Array.isArray(result.data?.reservations) ? result.data.reservations : [];
+      renderLiveTimetable();
+    })
+    .catch(() => renderLiveTimetable())
+    .finally(() => { state.liveLoadPromise = null; });
+  return state.liveLoadPromise;
+}
+
 async function loadPublicReservations() {
   if (state.profile || configMissing) return;
+  const range = publicReservationRange();
   try {
-    const result = await call("listPublicReservations", publicReservationRange());
+    const result = await call("listPublicReservations", range);
     state.reservations = Array.isArray(result.data?.reservations) ? result.data.reservations : [];
+    updateLiveReservations(state.reservations, range.from, range.to);
     renderCalendar();
   } catch (error) {
     state.reservations = [];
@@ -301,7 +380,8 @@ function renderBandLogoPreview() {
     elements.bandLogoPreview.innerHTML = "<span>NO LOGO</span>";
     return;
   }
-  const previewBand = { ...band, logoDataUrl: state.pendingLogoDataUrl ?? band.logoDataUrl };
+  const previewSource = state.pendingLogoDataUrl ?? bandLogoSource(band);
+  const previewBand = { ...band, logoDataUrl: "", logoThumbnailDataUrl: previewSource };
   elements.bandLogoPreview.innerHTML = bandLogoMarkup(previewBand, "band-logo-preview-image");
 }
 function renderCalendar() {
@@ -398,10 +478,12 @@ function subscribeToAppData() {
   state.unsubs.push(onSnapshot(collection(db, "bands"), (snapshot) => {
     state.bands = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
     renderBands();
+    optimiseLegacyBandLogos();
   }, (error) => showToast(errorMessage(error), true)));
   const reservationQuery = query(collection(db, "reservations"), where("status", "==", "confirmed"), where("date", ">=", from), where("date", "<=", to), orderBy("date"), orderBy("startHour"));
   state.unsubs.push(onSnapshot(reservationQuery, (snapshot) => {
     state.reservations = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    updateLiveReservations(state.reservations, from, to);
     renderCalendar();
     renderMyReservations();
   }, (error) => showToast(errorMessage(error), true)));
@@ -456,6 +538,35 @@ function showReservation(id) {
   elements.reservationDialogTitle.textContent = reservation.bandName;
   elements.reservationDialogInfo.textContent = `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00부터 ${pad(reservation.endHour)}:00까지 예약되어 있습니다.`;
   elements.reservationDialog.showModal();
+}
+
+async function showBandLogo(bandId) {
+  const band = visibleBands().find((item) => item.id === bandId);
+  if (!band || !bandHasLogo(band)) return;
+  const previewSource = bandLogoSource(band);
+  elements.bandLogoDialog.dataset.bandId = band.id;
+  elements.bandLogoDialogTitle.textContent = band.name;
+  elements.bandLogoViewerStatus.textContent = "큰 이미지를 불러오는 중입니다.";
+  elements.bandLogoFullImage.alt = `${band.name} 로고 원본`;
+  elements.bandLogoFullImage.src = previewSource;
+  elements.bandLogoFullImage.classList.remove("hidden");
+  elements.bandLogoDialog.showModal();
+
+  try {
+    let logoDataUrl = state.logoOriginals.get(band.id) || band.logoDataUrl || "";
+    if (!logoDataUrl) {
+      const result = await call("getBandLogo", { bandId: band.id });
+      logoDataUrl = String(result.data?.logoDataUrl || "");
+      if (logoDataUrl) state.logoOriginals.set(band.id, logoDataUrl);
+    }
+    if (!logoDataUrl) throw new Error("등록된 원본 로고가 없습니다.");
+    if (elements.bandLogoDialog.dataset.bandId !== band.id) return;
+    elements.bandLogoFullImage.src = logoDataUrl;
+    elements.bandLogoViewerStatus.textContent = "원본 로고 이미지";
+  } catch (error) {
+    if (elements.bandLogoDialog.dataset.bandId !== band.id) return;
+    elements.bandLogoViewerStatus.textContent = errorMessage(error);
+  }
 }
 
 async function handleReservation(event) {
@@ -560,20 +671,43 @@ async function handleBandCreate(event) {
   }
 }
 
-function loadLogoImage(file) {
+function loadLogoImage(source) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    const url = URL.createObjectURL(file);
+    const isDataUrl = typeof source === "string";
+    const url = isDataUrl ? source : URL.createObjectURL(source);
     image.onload = () => {
-      URL.revokeObjectURL(url);
+      if (!isDataUrl) URL.revokeObjectURL(url);
       resolve(image);
     };
     image.onerror = () => {
-      URL.revokeObjectURL(url);
+      if (!isDataUrl) URL.revokeObjectURL(url);
       reject(new Error("이미지 파일을 읽을 수 없습니다."));
     };
     image.src = url;
   });
+}
+
+function drawLogoDataUrl(image, maxSize, type, quality, background = "") {
+  const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (background) {
+    context.fillStyle = background;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL(type, quality);
+}
+
+function createLogoThumbnail(image) {
+  let thumbnail = drawLogoDataUrl(image, 240, "image/webp", 0.68);
+  if (thumbnail.length > 80000) thumbnail = drawLogoDataUrl(image, 180, "image/webp", 0.58);
+  if (thumbnail.length > 80000) thumbnail = drawLogoDataUrl(image, 180, "image/jpeg", 0.62, "#ffffff");
+  if (thumbnail.length > 80000) throw new Error("로고 썸네일을 만들 수 없습니다. 더 단순한 이미지를 선택해 주세요.");
+  return thumbnail;
 }
 
 async function prepareBandLogo(file) {
@@ -582,45 +716,72 @@ async function prepareBandLogo(file) {
   }
   if (file.size > 5 * 1024 * 1024) throw new Error("로고 원본은 5MB 이하로 선택해 주세요.");
   const image = await loadLogoImage(file);
-  const drawLogo = (maxSize, type, quality, background = "") => {
-    const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const context = canvas.getContext("2d");
-    if (background) {
-      context.fillStyle = background;
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL(type, quality);
-  };
-  let dataUrl = drawLogo(480, "image/webp", 0.82);
-  if (dataUrl.length > 340000) dataUrl = drawLogo(360, "image/webp", 0.7);
-  if (dataUrl.length > 340000) dataUrl = drawLogo(360, "image/jpeg", 0.7, "#ffffff");
-  if (dataUrl.length > 340000) throw new Error("이미지를 더 작은 크기로 줄인 뒤 다시 선택해 주세요.");
-  return dataUrl;
+  let logoDataUrl = drawLogoDataUrl(image, 1200, "image/webp", 0.86);
+  if (logoDataUrl.length > 740000) logoDataUrl = drawLogoDataUrl(image, 960, "image/webp", 0.8);
+  if (logoDataUrl.length > 740000) logoDataUrl = drawLogoDataUrl(image, 720, "image/webp", 0.72);
+  if (logoDataUrl.length > 740000) logoDataUrl = drawLogoDataUrl(image, 720, "image/jpeg", 0.72, "#ffffff");
+  if (logoDataUrl.length > 740000) throw new Error("이미지를 더 작은 크기로 줄인 뒤 다시 선택해 주세요.");
+  return { logoDataUrl, logoThumbnailDataUrl: createLogoThumbnail(image) };
 }
 
-function applyBandLogoLocally(bandId, logoDataUrl) {
+async function createLegacyLogoThumbnail(logoDataUrl) {
+  const image = await loadLogoImage(logoDataUrl);
+  return createLogoThumbnail(image);
+}
+
+function clearPendingBandLogo() {
+  state.pendingLogoDataUrl = null;
+  state.pendingLogoThumbnailDataUrl = null;
+  elements.bandLogoFile.value = "";
+}
+
+function applyBandLogoLocally(bandId, logoDataUrl, logoThumbnailDataUrl) {
   for (const list of [state.bands, state.directoryBands]) {
     const band = list.find((item) => item.id === bandId);
-    if (band) band.logoDataUrl = logoDataUrl;
+    if (!band) continue;
+    band.logoThumbnailDataUrl = logoThumbnailDataUrl;
+    band.hasLogo = Boolean(logoDataUrl);
+    delete band.logoDataUrl;
   }
-  state.pendingLogoDataUrl = null;
-  elements.bandLogoFile.value = "";
+  if (logoDataUrl) state.logoOriginals.set(bandId, logoDataUrl);
+  else state.logoOriginals.delete(bandId);
+  clearPendingBandLogo();
   renderBands();
 }
 
+function optimiseLegacyBandLogos() {
+  if (state.profile?.role !== "main_admin") return;
+  state.bands
+    .filter((band) => band.active !== false && band.logoDataUrl && !band.logoThumbnailDataUrl && !migratingLegacyLogoIds.has(band.id))
+    .forEach((band) => {
+      migratingLegacyLogoIds.add(band.id);
+      const originalDataUrl = band.logoDataUrl;
+      createLegacyLogoThumbnail(originalDataUrl)
+        .then((logoThumbnailDataUrl) => call("updateBandLogo", { bandId: band.id, logoDataUrl: originalDataUrl, logoThumbnailDataUrl })
+          .then(() => {
+            state.logoOriginals.set(band.id, originalDataUrl);
+            band.logoThumbnailDataUrl = logoThumbnailDataUrl;
+            band.hasLogo = true;
+            delete band.logoDataUrl;
+            renderBands();
+            return loadBandDirectory();
+          }))
+        .catch(() => {})
+        .finally(() => migratingLegacyLogoIds.delete(band.id));
+    });
+}
 async function handleBandLogoFile(event) {
   const [file] = event.target.files;
   if (!file) return;
   try {
-    state.pendingLogoDataUrl = await prepareBandLogo(file);
+    const prepared = await prepareBandLogo(file);
+    state.pendingLogoDataUrl = prepared.logoDataUrl;
+    state.pendingLogoThumbnailDataUrl = prepared.logoThumbnailDataUrl;
     renderBandLogoPreview();
     showToast("로고 미리보기를 준비했습니다. 저장 버튼을 눌러 주세요.");
   } catch (error) {
     state.pendingLogoDataUrl = null;
+    state.pendingLogoThumbnailDataUrl = null;
     event.target.value = "";
     renderBandLogoPreview();
     showToast(errorMessage(error), true);
@@ -634,8 +795,9 @@ async function handleBandLogoSubmit(event) {
   if (!state.pendingLogoDataUrl) return showToast("새 로고 이미지 파일을 선택해 주세요.", true);
   try {
     const logoDataUrl = state.pendingLogoDataUrl;
-    await call("updateBandLogo", { bandId: band.id, logoDataUrl });
-    applyBandLogoLocally(band.id, logoDataUrl);
+    const logoThumbnailDataUrl = state.pendingLogoThumbnailDataUrl;
+    await call("updateBandLogo", { bandId: band.id, logoDataUrl, logoThumbnailDataUrl });
+    applyBandLogoLocally(band.id, logoDataUrl, logoThumbnailDataUrl);
     await loadBandDirectory();
     showToast(`${band.name} 로고를 저장했습니다.`);
   } catch (error) {
@@ -648,8 +810,8 @@ async function handleBandLogoRemove() {
   if (!band) return showToast("밴드를 선택해 주세요.", true);
   if (!window.confirm(`${band.name} 로고를 삭제할까요?`)) return;
   try {
-    await call("updateBandLogo", { bandId: band.id, logoDataUrl: "" });
-    applyBandLogoLocally(band.id, "");
+    await call("updateBandLogo", { bandId: band.id, logoDataUrl: "", logoThumbnailDataUrl: "" });
+    applyBandLogoLocally(band.id, "", "");
     await loadBandDirectory();
     showToast(`${band.name} 로고를 삭제했습니다.`);
   } catch (error) {
@@ -664,8 +826,7 @@ async function handleBandDelete(event) {
   if (!window.confirm(message)) return;
   try {
     await call("deleteBand", { bandId: band.id });
-    state.pendingLogoDataUrl = null;
-    elements.bandLogoFile.value = "";
+    clearPendingBandLogo();
     await loadBandDirectory();
     showToast(`${band.name} 밴드를 삭제했습니다.`);
   } catch (error) {
@@ -709,6 +870,12 @@ function bindEvents() {
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
+  elements.closeBandLogoButton.addEventListener("click", () => elements.bandLogoDialog.close());
+  elements.bandLogoDialog.addEventListener("close", () => {
+    elements.bandLogoDialog.dataset.bandId = "";
+    elements.bandLogoFullImage.removeAttribute("src");
+    elements.bandLogoFullImage.classList.add("hidden");
+  });
   elements.showSignupButton.addEventListener("click", () => setDialogView("signupView"));
   elements.showLoginButton.addEventListener("click", () => setDialogView("authView"));
   elements.loginForm.addEventListener("submit", handleLogin);
@@ -721,8 +888,7 @@ function bindEvents() {
   elements.bandLogoForm.addEventListener("submit", handleBandLogoSubmit);
   elements.bandLogoFile.addEventListener("change", handleBandLogoFile);
   elements.logoBand.addEventListener("change", () => {
-    state.pendingLogoDataUrl = null;
-    elements.bandLogoFile.value = "";
+    clearPendingBandLogo();
     renderBandLogoPreview();
   });
   elements.removeBandLogoButton.addEventListener("click", handleBandLogoRemove);
@@ -740,6 +906,10 @@ function bindEvents() {
     const id = event.target.dataset.deleteNotice;
     if (!id || !window.confirm("이 공지를 삭제할까요?")) return;
     try { await deleteDoc(doc(db, "announcements", id)); showToast("공지를 삭제했습니다."); } catch (error) { showToast(errorMessage(error), true); }
+  });
+  elements.bandDirectory.addEventListener("click", (event) => {
+    const bandId = event.target.closest("[data-band-logo]")?.dataset.bandLogo;
+    if (bandId) showBandLogo(bandId);
   });
   elements.calendarWrap.addEventListener("click", (event) => {
     const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
@@ -782,6 +952,9 @@ function initialise() {
     return;
   }
   subscribeToPublicData();
+  loadLiveReservations();
+  window.setInterval(renderLiveTimetable, 60000);
+  window.setInterval(loadLiveReservations, 120000);
   onAuthStateChanged(auth, async (user) => {
     state.firebaseUser = user;
     await refreshProfile();

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260722.2" />
+    <meta name="soundcheck-version" content="20260722.3" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -40,14 +40,14 @@
         <div>
           <p class="eyebrow">ONE ROOM, GOOD TIME</p>
           <h1>깔룽살롱<br /><em>합주실</em></h1>
-          <p class="hero-copy">밴드별 관리자만 예약하고, 모두가 한눈에 일정을 확인하는 합주실 스케줄러입니다.</p>
+          <p class="hero-copy">밴드별로 예약하고, 모두가 한눈에 일정을 확인하는 합주실 스케줄러입니다.</p>
           <div class="hero-actions">
             <a href="#schedule" class="button button-primary">이번 주 일정 보기 <span>↓</span></a>
             <button id="heroReservationButton" class="button button-ghost hero-reservation-button">합주실 예약하기</button>
           </div>
         </div>
         <aside class="room-card" aria-label="예약 방식 안내">
-          <div class="room-card-top"><span class="live-dot"></span> LIVE TIMETABLE</div>
+          <div class="room-card-top"><span class="live-dot"></span><span>LIVE TIMETABLE</span><span id="liveReservationBadge" class="live-reservation-badge" aria-live="polite">현재 예약 확인 중</span></div>
           <div class="room-hours"><span>OPEN</span><strong id="heroOpenHour">09:00</strong><i></i><strong id="heroCloseHour">23:00</strong><span>CLOSE</span></div>
           <p>한 시간 단위로 예약할 수 있습니다.<br />다음 팀을 위해 정시 퇴실을 지켜 주세요.</p>
         </aside>
@@ -226,7 +226,16 @@
       <p id="reservationDialogInfo" class="dialog-copy"></p>
     </dialog>
 
+    <dialog id="bandLogoDialog" class="band-logo-dialog">
+      <button id="closeBandLogoButton" class="dialog-close dialog-close-light" aria-label="닫기">×</button>
+      <div class="band-logo-viewer"><img id="bandLogoFullImage" class="band-logo-full-image hidden" alt="" /></div>
+      <div class="band-logo-dialog-copy">
+        <p class="eyebrow">BAND LOGO</p>
+        <h2 id="bandLogoDialogTitle">밴드 로고</h2>
+        <p id="bandLogoViewerStatus" class="dialog-copy" aria-live="polite">큰 이미지를 불러오는 중입니다.</p>
+      </div>
+    </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260722.2"></script>
+    <script type="module" src="./app.js?v=20260722.3"></script>
   </body>
 </html>

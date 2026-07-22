@@ -208,3 +208,72 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
   .brand-mark { width: 34px; height: 34px; }
   .hero::after { background: radial-gradient(circle at 88% 13%, rgba(82,200,208,.36), transparent 11rem), radial-gradient(circle at 18% 78%, rgba(118,80,180,.22), transparent 13rem), repeating-linear-gradient(122deg, transparent 0 30px, rgba(255,255,255,.03) 31px 32px); }
 }
+/* LIVE STATUS + LOGO VIEWER · 20260722 */
+.topbar.page-width {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: max(20px, calc((100vw - 1180px) / 2));
+}
+.room-card-top { flex-wrap: wrap; }
+.live-reservation-badge {
+  max-width: 72%;
+  margin-left: auto;
+  padding: 6px 9px;
+  border: 1px solid var(--live-color, var(--acid));
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255,255,255,.09);
+  font: 700 10px/1.35 "Gowun Dodum", sans-serif;
+  letter-spacing: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.live-reservation-badge.is-free { color: rgba(255,255,255,.68); border-color: rgba(255,255,255,.28); }
+.band-card::after { pointer-events: none; }
+.band-logo-button {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 154px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: #fff;
+  cursor: zoom-in;
+}
+.band-logo-button .band-card-logo { height: 100%; transition: transform .2s ease, filter .2s ease; }
+.band-logo-button:hover .band-card-logo,
+.band-logo-button:focus-visible .band-card-logo { transform: scale(1.025); filter: brightness(.82); }
+.band-logo-open-hint {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255,255,255,.4);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(7,20,61,.82);
+  font: 700 9px/1 "Gowun Dodum", sans-serif;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.band-logo-button:hover .band-logo-open-hint,
+.band-logo-button:focus-visible .band-logo-open-hint { opacity: 1; transform: translateY(0); }
+.band-logo-dialog { width: min(760px, calc(100% - 28px)); padding: 0; overflow: hidden; border-top-color: var(--acid); background: var(--cream); }
+.dialog-close-light { z-index: 2; color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,.6); }
+.band-logo-viewer { min-height: 250px; display: grid; place-items: center; background: linear-gradient(145deg, #040c25, #102f5d 58%, #2d165c); }
+.band-logo-full-image { width: 100%; max-height: min(68vh, 620px); display: block; object-fit: contain; }
+.band-logo-dialog-copy { padding: 24px 28px 26px; }
+.band-logo-dialog-copy .dialog-copy { margin-bottom: 0; }
+
+@media (max-width: 600px) {
+  .topbar.page-width { padding-inline: 14px; }
+  .live-reservation-badge { width: auto; max-width: none; margin-left: 0; flex-basis: 100%; text-align: left; }
+  .band-logo-button { height: 116px; }
+  .band-logo-open-hint { opacity: 1; transform: none; }
+  .band-logo-dialog { width: 100%; max-height: 90dvh; margin: auto 0 0; border-inline: 0; border-bottom: 0; border-radius: 18px 18px 0 0; }
+  .band-logo-viewer { min-height: 220px; }
+  .band-logo-dialog-copy { padding: 21px 22px max(24px, env(safe-area-inset-bottom)); }
+}
