@@ -51,4 +51,12 @@ jobs:
       - name: Deploy Cloud Functions
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        run: npx --yes firebase-tools deploy --project "$FIREBASE_PROJECT_ID" --only functions --non-interactive --force
+        run: |
+          set +e
+          npx --yes firebase-tools deploy --project "$FIREBASE_PROJECT_ID" --only functions --non-interactive --force 2>&1 | tee functions-deploy.log
+          deploy_status=${PIPESTATUS[0]}
+          if [ "$deploy_status" -ne 0 ]; then
+            deploy_message=$(tail -n 30 functions-deploy.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=Firebase Functions deployment failed::$deploy_message"
+            exit "$deploy_status"
+          fi
