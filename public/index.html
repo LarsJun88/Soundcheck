@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260722.3" />
+    <meta name="soundcheck-version" content="20260728.1" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -61,6 +61,16 @@
         <div id="noticeList" class="notice-list"><p class="empty-message">공지사항을 불러오는 중입니다.</p></div>
       </section>
 
+      <section id="trashSchedule" class="trash-section page-width" aria-labelledby="trashScheduleTitle">
+        <div class="section-heading trash-section-heading">
+          <div><p class="eyebrow">CLEAN ROOM ROUTINE</p><h2 id="trashScheduleTitle">요일별 쓰레기 배출</h2></div>
+          <button id="trashNotificationButton" class="button button-light" type="button">종료 30분 전 알림 켜기</button>
+        </div>
+        <div class="trash-guide"><strong>배출 시간 · 오후 6시–밤 10시</strong><span>요일별 품목을 확인하고 종류별로 분리해 주세요.</span></div>
+        <div id="trashScheduleGrid" class="trash-schedule-grid" aria-live="polite"></div>
+        <p id="trashNotificationStatus" class="trash-notification-status"></p>
+      </section>
+
       <section class="bands-section page-width" aria-labelledby="bandDirectoryTitle">
         <div class="section-heading">
           <div><p class="eyebrow">PLAYING TOGETHER</p><h2 id="bandDirectoryTitle">함께하는 밴드</h2></div>
@@ -100,6 +110,7 @@
             <label>날짜
               <input id="reservationDate" type="date" required />
             </label>
+            <div id="reservationTrashPreview" class="reservation-trash-preview" aria-live="polite"></div>
             <div class="form-row">
               <label>시작
                 <select id="startHour" required></select>
@@ -224,6 +235,16 @@
       <p class="eyebrow">RESERVATION</p>
       <h2 id="reservationDialogTitle">예약 상세</h2>
       <p id="reservationDialogInfo" class="dialog-copy"></p>
+      <div id="reservationDialogTrash" class="reservation-dialog-trash"></div>
+    </dialog>
+
+    <dialog id="trashNoticeDialog" class="trash-notice-dialog">
+      <button id="closeTrashNoticeButton" class="dialog-close" aria-label="닫기">×</button>
+      <p class="eyebrow">TRASH DAY NOTICE</p>
+      <h2 id="trashNoticeDialogTitle">쓰레기 배출 안내</h2>
+      <p id="trashNoticeDialogInfo" class="dialog-copy"></p>
+      <div id="trashNoticeDialogBody" class="trash-notice-dialog-body"></div>
+      <button id="trashDialogNotificationButton" class="button button-primary form-submit" type="button">종료 30분 전 알림 받기</button>
     </dialog>
 
     <dialog id="bandLogoDialog" class="band-logo-dialog">
@@ -236,6 +257,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260722.3"></script>
+    <script type="module" src="./app.js?v=20260728.1"></script>
   </body>
 </html>

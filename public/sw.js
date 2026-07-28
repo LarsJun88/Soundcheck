@@ -1,10 +1,10 @@
-const SHELL_CACHE = "soundcheck-shell-v12";
+const SHELL_CACHE = "soundcheck-shell-v13";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./rock-theme.css",
-  "./app.js?v=20260722.3",
+  "./app.js?v=20260728.1",
   "./firebase-config.js",
   "./manifest.webmanifest",
   "./icons/soundcheck-32.png",
@@ -27,4 +27,13 @@ self.addEventListener("fetch", (event) => {
     if (response.ok) caches.open(SHELL_CACHE).then((cache) => cache.put(event.request, response.clone()));
     return response;
   }).catch(() => caches.match(event.request).then((cached) => cached || (event.request.mode === "navigate" ? caches.match("./index.html") : Response.error()))));
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || "./#trashSchedule", self.location.href).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    if (existing) return existing.focus().then((client) => client.navigate(targetUrl));
+    return self.clients.openWindow(targetUrl);
+  }));
 });

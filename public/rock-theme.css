@@ -277,3 +277,77 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
   .band-logo-viewer { min-height: 220px; }
   .band-logo-dialog-copy { padding: 21px 22px max(24px, env(safe-area-inset-bottom)); }
 }
+/* WEEKLY TRASH GUIDE + REMINDERS · 20260728 */
+.trash-section { padding-bottom: 112px; }
+.trash-section-heading { align-items: center; }
+.trash-guide {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-left: 6px solid var(--acid);
+  color: #f7fcff;
+  background: linear-gradient(135deg, var(--ink-soft), #173f70 62%, #3a2069);
+  box-shadow: 5px 5px 0 rgba(7,20,61,.14);
+}
+.trash-guide strong { font: 800 14px "Montserrat", "Gowun Dodum", sans-serif; }
+.trash-guide span { color: rgba(255,255,255,.72); font-size: 12px; text-align: right; }
+.trash-schedule-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 11px; }
+.trash-card {
+  position: relative;
+  min-width: 0;
+  min-height: 238px;
+  padding: 17px 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--trash-color, var(--acid));
+  background: var(--cream);
+  box-shadow: 4px 4px 0 rgba(7,20,61,.1);
+}
+.trash-card.is-today { outline: 3px solid var(--acid); outline-offset: 3px; }
+.trash-card-day { margin: 0 0 8px; color: var(--muted); font: 700 10px/1 "DM Mono", monospace; letter-spacing: 1px; }
+.trash-card h3 { margin: 0 0 11px; font: 800 15px/1.25 "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -.5px; }
+.trash-card ul { margin: 0; padding-left: 16px; color: #44536c; font-size: 11.5px; line-height: 1.48; }
+.trash-card li + li { margin-top: 6px; }
+.trash-card-note { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10.5px; }
+.trash-card.tone-mixed { --trash-color: var(--signal); }
+.trash-card.tone-recycle { --trash-color: #15a7b7; }
+.trash-card.tone-off { --trash-color: #8d96a8; color: var(--muted); background: #eef3f5; }
+.trash-card.tone-off h3 { color: #68758a; }
+.trash-notification-status { min-height: 20px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+.reservation-trash-preview,
+.reservation-dialog-trash {
+  margin: 2px 0 15px;
+  padding: 13px 14px;
+  border: 1px solid #a9d9dd;
+  border-left: 5px solid var(--acid);
+  color: #354760;
+  background: #e9f8f8;
+  font-size: 12px;
+}
+.reservation-trash-preview strong,
+.reservation-dialog-trash strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 13px; }
+.my-reservation-trash { margin-top: 6px !important; color: #4e5f78 !important; font-family: "Gowun Dodum", sans-serif !important; }
+.trash-notice-dialog { width: min(520px, calc(100% - 28px)); padding: 34px; border-top-color: var(--acid); }
+.trash-notice-dialog-body { margin: 0 0 19px; padding: 17px 18px; border-left: 6px solid var(--acid); background: #e9f8f8; }
+.trash-notice-dialog-body strong { display: block; margin-bottom: 8px; font: 800 16px "Montserrat", "Gowun Dodum", sans-serif; }
+.trash-notice-dialog-body ul { margin: 0; padding-left: 18px; color: #41536d; font-size: 13px; }
+.trash-notice-dialog-body li + li { margin-top: 6px; }
+.trash-notice-dialog-body p { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 980px) {
+  .trash-schedule-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .trash-section { padding-bottom: 76px; }
+  .trash-section-heading .button { width: 100%; }
+  .trash-guide { align-items: flex-start; flex-direction: column; }
+  .trash-guide span { text-align: left; }
+  .trash-schedule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .trash-card { min-height: 0; padding: 15px 12px; }
+  .trash-card h3 { font-size: 14px; }
+  .trash-card ul { font-size: 11px; }
+  .trash-notice-dialog { width: 100%; max-height: 88dvh; margin: auto 0 0; padding: 30px 22px max(28px, env(safe-area-inset-bottom)); border-inline: 0; border-bottom: 0; border-radius: 18px 18px 0 0; }
+}

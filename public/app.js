@@ -23,8 +23,63 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260722.3";
+const APP_VERSION = "20260728.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
+const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
+const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
+const TRASH_REMINDER_MINUTES = 30;
+const TRASH_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const TRASH_SCHEDULE = {
+  0: {
+    day: "일요일",
+    title: "일반·음식물쓰레기",
+    tone: "mixed",
+    items: ["불에 타는 일반쓰레기 · 종량제봉투", "음식물쓰레기 · 전용용기와 납부필증"],
+    note: "오후 6시부터 밤 10시까지 배출",
+  },
+  1: {
+    day: "월요일",
+    title: "재활용품",
+    tone: "recycle",
+    items: ["투명페트병, 고철·캔류", "플라스틱류와 요구르트병", "폐형광등과 폐건전지"],
+    note: "품목 종류별로 구분해서 배출",
+  },
+  2: {
+    day: "화요일",
+    title: "일반·음식물·불연성",
+    tone: "mixed",
+    items: ["불에 타는 일반쓰레기 · 종량제봉투", "음식물쓰레기 · 전용용기와 납부필증", "불에 안 타는 쓰레기 · 불연성 전용마대"],
+    note: "깨진 유리·사기그릇·조개껍질 등은 불연성 마대",
+  },
+  3: {
+    day: "수요일",
+    title: "재활용품·기타",
+    tone: "recycle",
+    items: ["종이·골판지·유리병·스티로폼", "비닐봉투와 필름류 포장재", "소형 폐가전과 연탄재", "폐식용유 · 밀폐용기에 담기"],
+    note: "스티로폼과 비닐은 이물질 없이 깨끗하게 배출",
+  },
+  4: {
+    day: "목요일",
+    title: "일반·음식물쓰레기",
+    tone: "mixed",
+    items: ["불에 타는 일반쓰레기 · 종량제봉투", "음식물쓰레기 · 전용용기와 납부필증"],
+    note: "오후 6시부터 밤 10시까지 배출",
+  },
+  5: {
+    day: "금요일",
+    title: "배출 안 함",
+    tone: "off",
+    items: ["쓰레기를 밖에 내놓지 않는 날입니다."],
+    note: "다음 배출 요일을 이용해 주세요.",
+  },
+  6: {
+    day: "토요일",
+    title: "배출 안 함",
+    tone: "off",
+    items: ["쓰레기를 밖에 내놓지 않는 날입니다."],
+    note: "다음 배출 요일을 이용해 주세요.",
+  },
+};
 const state = {
   firebaseUser: null,
   loginId: null,
@@ -36,6 +91,7 @@ const state = {
   logoOriginals: new Map(),
   liveReservations: [],
   liveLoadPromise: null,
+  trashAlertTimers: new Map(),
   reservations: [],
   announcements: [],
   room: DEFAULT_ROOM,
@@ -169,6 +225,55 @@ function weekdayLabel(dateText) {
   return new Intl.DateTimeFormat("ko-KR", { weekday: "long" }).format(date);
 }
 
+function weekdayIndexForDate(dateText) {
+  return new Date(`${dateText}T12:00:00+09:00`).getUTCDay();
+}
+
+function trashScheduleForDate(dateText) {
+  return TRASH_SCHEDULE[weekdayIndexForDate(dateText)];
+}
+
+function trashSummary(schedule) {
+  return schedule.tone === "off" ? "쓰레기 배출 없음" : schedule.items.join(" · ");
+}
+
+function trashCompactMarkup(dateText) {
+  const schedule = trashScheduleForDate(dateText);
+  return `<strong>${escapeHtml(schedule.day)} · ${escapeHtml(schedule.title)}</strong>${escapeHtml(trashSummary(schedule))}`;
+}
+
+function renderTrashSchedule() {
+  const todayIndex = weekdayIndexForDate(todayInSeoul());
+  elements.trashScheduleGrid.innerHTML = TRASH_DISPLAY_ORDER.map((dayIndex) => {
+    const schedule = TRASH_SCHEDULE[dayIndex];
+    return `
+      <article class="trash-card tone-${schedule.tone} ${dayIndex === todayIndex ? "is-today" : ""}">
+        <p class="trash-card-day">${escapeHtml(schedule.day)}${dayIndex === todayIndex ? " · 오늘" : ""}</p>
+        <h3>${escapeHtml(schedule.title)}</h3>
+        <ul>${schedule.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        <p class="trash-card-note">${escapeHtml(schedule.note)}</p>
+      </article>`;
+  }).join("");
+}
+
+function renderReservationTrashPreview() {
+  const dateText = elements.reservationDate.value || todayInSeoul();
+  elements.reservationTrashPreview.innerHTML = trashCompactMarkup(dateText);
+}
+
+function showTrashNotice(dateText, reservation = null, reminder = false) {
+  const schedule = trashScheduleForDate(dateText);
+  elements.trashNoticeDialogTitle.textContent = reminder ? `합주 종료 ${TRASH_REMINDER_MINUTES}분 전` : "예약 완료 · 쓰레기 안내";
+  const timeText = reservation ? ` · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00` : "";
+  elements.trashNoticeDialogInfo.textContent = `${humanDate(dateText, true)}${timeText}`;
+  elements.trashNoticeDialogBody.innerHTML = `
+    <strong>${escapeHtml(schedule.day)} · ${escapeHtml(schedule.title)}</strong>
+    <ul>${schedule.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    <p>${escapeHtml(schedule.note)}${schedule.tone === "off" ? "" : " · 배출 가능 시간은 오후 6시부터 밤 10시까지입니다."}</p>`;
+  updateTrashNotificationUi();
+  if (!elements.trashNoticeDialog.open) elements.trashNoticeDialog.showModal();
+}
+
 function escapeHtml(value) {
   return String(value || "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 }
@@ -197,6 +302,159 @@ function errorMessage(error) {
   return messages[error?.code] || error?.message || "처리 중 문제가 발생했습니다. 다시 시도해 주세요.";
 }
 
+function trashNotificationSupported() {
+  return "Notification" in window && "serviceWorker" in navigator;
+}
+
+function trashNotificationsEnabled() {
+  return trashNotificationSupported()
+    && Notification.permission === "granted"
+    && localStorage.getItem(TRASH_ALERT_ENABLED_KEY) === "1";
+}
+
+function updateTrashNotificationUi() {
+  const buttons = [elements.trashNotificationButton, elements.trashDialogNotificationButton].filter(Boolean);
+  let buttonText = `종료 ${TRASH_REMINDER_MINUTES}분 전 알림 켜기`;
+  let statusText = "알림을 허용하면 이 기기에서 합주 종료 전에 알려드립니다. 사이트나 홈 화면 앱이 실행 중이어야 합니다.";
+  let disabled = false;
+  if (!trashNotificationSupported()) {
+    buttonText = "이 브라우저는 알림 미지원";
+    statusText = "알림을 지원하는 브라우저에서 이용하거나 홈 화면 앱으로 추가해 주세요.";
+    disabled = true;
+  } else if (Notification.permission === "denied") {
+    buttonText = "브라우저에서 알림 차단됨";
+    statusText = "브라우저 사이트 설정에서 Soundcheck 알림을 허용해 주세요.";
+    disabled = true;
+  } else if (trashNotificationsEnabled()) {
+    buttonText = `종료 ${TRASH_REMINDER_MINUTES}분 전 알림 켜짐`;
+    statusText = "알림이 켜졌습니다. 사이트나 홈 화면 앱이 실행 중일 때 기기 알림으로 알려드립니다.";
+    disabled = true;
+  }
+  buttons.forEach((button) => {
+    button.textContent = buttonText;
+    button.disabled = disabled;
+  });
+  if (elements.trashNotificationStatus) elements.trashNotificationStatus.textContent = statusText;
+}
+
+async function enableTrashNotifications() {
+  if (!trashNotificationSupported()) {
+    showToast("이 브라우저에서는 알림을 사용할 수 없습니다. 홈 화면 앱으로 추가한 뒤 다시 시도해 주세요.", true);
+    return;
+  }
+  if (Notification.permission === "denied") {
+    updateTrashNotificationUi();
+    showToast("브라우저 사이트 설정에서 알림 차단을 해제해 주세요.", true);
+    return;
+  }
+  const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  if (permission !== "granted") {
+    updateTrashNotificationUi();
+    showToast("알림 권한이 허용되지 않았습니다.", true);
+    return;
+  }
+  localStorage.setItem(TRASH_ALERT_ENABLED_KEY, "1");
+  await navigator.serviceWorker.ready.catch(() => null);
+  updateTrashNotificationUi();
+  scheduleTrashAlerts();
+  showToast(`합주 종료 ${TRASH_REMINDER_MINUTES}분 전 알림을 켰습니다.`);
+}
+
+function trashAlertHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TRASH_ALERT_HISTORY_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function trashAlertKey(reservation) {
+  return `${reservation.id || "pending"}:${reservation.date}:${reservation.endHour}`;
+}
+
+function trashAlertWasDelivered(reservation) {
+  return Boolean(trashAlertHistory()[trashAlertKey(reservation)]);
+}
+
+function markTrashAlertDelivered(reservation) {
+  const history = trashAlertHistory();
+  history[trashAlertKey(reservation)] = Date.now();
+  const trimmed = Object.fromEntries(Object.entries(history).sort((a, b) => b[1] - a[1]).slice(0, 80));
+  localStorage.setItem(TRASH_ALERT_HISTORY_KEY, JSON.stringify(trimmed));
+}
+
+function reservationEndTime(reservation) {
+  const dayStart = new Date(`${reservation.date}T00:00:00+09:00`).getTime();
+  return dayStart + (Number(reservation.endHour) * 60 * 60 * 1000);
+}
+
+function reservationBelongsToCurrentUser(reservation) {
+  if (!state.profile || !auth.currentUser) return false;
+  if (state.profile.role === "band_admin") return reservation.bandId === state.profile.bandId;
+  if (state.profile.role === "main_admin") return reservation.createdBy === auth.currentUser.uid;
+  return false;
+}
+
+function clearTrashAlertTimers() {
+  state.trashAlertTimers.forEach((timerId) => window.clearTimeout(timerId));
+  state.trashAlertTimers.clear();
+}
+
+async function fireTrashReminder(reservation) {
+  const key = trashAlertKey(reservation);
+  state.trashAlertTimers.delete(key);
+  if (trashAlertWasDelivered(reservation) || Date.now() >= reservationEndTime(reservation)) return;
+  const schedule = trashScheduleForDate(reservation.date);
+  let delivered = false;
+
+  if (trashNotificationsEnabled()) {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(`합주 종료 ${TRASH_REMINDER_MINUTES}분 전 · ${schedule.title}`, {
+        body: schedule.tone === "off" ? `${schedule.day}: 오늘은 쓰레기를 배출하지 않습니다.` : `${schedule.day}: ${trashSummary(schedule)} · 배출시간 오후 6시–밤 10시`,
+        icon: "./icons/soundcheck-192.png",
+        badge: "./icons/soundcheck-32.png",
+        tag: `trash-${key}`,
+        data: { url: "./#trashSchedule" },
+      });
+      delivered = true;
+    } catch (error) {
+      delivered = false;
+    }
+  }
+
+  if (document.visibilityState === "visible") {
+    showTrashNotice(reservation.date, reservation, true);
+    showToast(`합주 종료 ${TRASH_REMINDER_MINUTES}분 전입니다. 오늘 쓰레기 배출 품목을 확인해 주세요.`);
+    delivered = true;
+  }
+
+  if (delivered) {
+    markTrashAlertDelivered(reservation);
+    return;
+  }
+  if (Date.now() < reservationEndTime(reservation)) {
+    state.trashAlertTimers.set(key, window.setTimeout(() => fireTrashReminder(reservation), 60000));
+  }
+}
+
+function scheduleTrashReminder(reservation) {
+  if (!reservationBelongsToCurrentUser(reservation) || trashAlertWasDelivered(reservation)) return;
+  const endTime = reservationEndTime(reservation);
+  if (endTime <= Date.now()) return;
+  const key = trashAlertKey(reservation);
+  const reminderAt = endTime - (TRASH_REMINDER_MINUTES * 60000);
+  const delay = Math.max(100, reminderAt - Date.now());
+  const existing = state.trashAlertTimers.get(key);
+  if (existing) window.clearTimeout(existing);
+  state.trashAlertTimers.set(key, window.setTimeout(() => fireTrashReminder(reservation), delay));
+}
+
+function scheduleTrashAlerts() {
+  clearTrashAlertTimers();
+  state.reservations.filter(reservationBelongsToCurrentUser).forEach(scheduleTrashReminder);
+}
 function setDialogView(view) {
   ["authView", "signupView", "activationView"].forEach((id) => elements[id].classList.toggle("hidden", id !== view));
 }
@@ -413,14 +671,18 @@ function renderMyReservations() {
   if (!state.profile) return;
   const reservations = state.reservations.filter((reservation) => state.profile.role === "main_admin" || reservation.bandId === state.profile.bandId);
   elements.myReservationCount.textContent = `${reservations.length}건`;
-  elements.myReservationList.innerHTML = reservations.length ? reservations.map((reservation) => `
+  elements.myReservationList.innerHTML = reservations.length ? reservations.map((reservation) => {
+    const trashSchedule = trashScheduleForDate(reservation.date);
+    return `
     <article class="my-reservation" style="--reservation-color:${escapeHtml(reservation.bandColor || "#7957E8")}">
       <strong>${escapeHtml(reservation.bandName)}</strong>
-      <p>${humanDate(reservation.date)} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00</p>
+      <p>${humanDate(reservation.date, true)} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00</p>
+      <p class="my-reservation-trash">${escapeHtml(trashSchedule.day)} 쓰레기 · ${escapeHtml(trashSchedule.title)}</p>
       <button class="cancel-button" data-cancel-reservation="${reservation.id}">예약 취소</button>
-    </article>`).join("") : "<p class=\"empty-message\">예정된 예약이 없습니다.</p>";
+    </article>`;
+  }).join("") : "<p class=\"empty-message\">예정된 예약이 없습니다.</p>";
+  scheduleTrashAlerts();
 }
-
 function renderBands() {
   renderBandDirectory();
   if (state.profile?.role !== "main_admin") return;
@@ -468,6 +730,7 @@ function clearAppSubscriptions() {
   state.unsubs = [];
   state.bands = [];
   state.reservations = [];
+  clearTrashAlertTimers();
   renderBandDirectory();
 }
 
@@ -537,6 +800,7 @@ function showReservation(id) {
   if (!reservation) return;
   elements.reservationDialogTitle.textContent = reservation.bandName;
   elements.reservationDialogInfo.textContent = `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00부터 ${pad(reservation.endHour)}:00까지 예약되어 있습니다.`;
+  elements.reservationDialogTrash.innerHTML = trashCompactMarkup(reservation.date);
   elements.reservationDialog.showModal();
 }
 
@@ -572,17 +836,31 @@ async function showBandLogo(bandId) {
 async function handleReservation(event) {
   event.preventDefault();
   if (!state.profile) return openAuth();
+  const date = elements.reservationDate.value;
   const startHour = Number(elements.startHour.value);
   const endHour = Number(elements.endHour.value);
+  const bandId = state.profile.role === "main_admin" ? elements.reservationBand.value : state.profile.bandId;
   if (endHour <= startHour) return showToast("종료 시간은 시작 시간보다 뒤여야 합니다.", true);
   try {
-    await call("createReservation", {
-      date: elements.reservationDate.value,
+    const result = await call("createReservation", {
+      date,
       startHour,
       endHour,
-      ...(state.profile.role === "main_admin" ? { bandId: elements.reservationBand.value } : {}),
+      ...(state.profile.role === "main_admin" ? { bandId } : {}),
     });
-    showToast("예약이 완료되었습니다.");
+    const band = state.bands.find((item) => item.id === bandId);
+    const createdReservation = {
+      id: result.data?.reservationId || `pending-${Date.now()}`,
+      bandId,
+      bandName: band?.name || "예약 밴드",
+      date,
+      startHour,
+      endHour,
+      createdBy: auth.currentUser?.uid || "",
+    };
+    showTrashNotice(date, createdReservation, false);
+    scheduleTrashReminder(createdReservation);
+    showToast("예약이 완료되었습니다. 해당 요일의 쓰레기 배출 안내를 확인해 주세요.");
   } catch (error) {
     showToast(errorMessage(error), true);
   }
@@ -870,6 +1148,9 @@ function bindEvents() {
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
+  elements.closeTrashNoticeButton.addEventListener("click", () => elements.trashNoticeDialog.close());
+  elements.trashNotificationButton.addEventListener("click", enableTrashNotifications);
+  elements.trashDialogNotificationButton.addEventListener("click", enableTrashNotifications);
   elements.closeBandLogoButton.addEventListener("click", () => elements.bandLogoDialog.close());
   elements.bandLogoDialog.addEventListener("close", () => {
     elements.bandLogoDialog.dataset.bandId = "";
@@ -899,6 +1180,8 @@ function bindEvents() {
     await signOut(auth);
   });
   elements.weekStart.addEventListener("change", () => { if (state.profile) subscribeToAppData(); else loadPublicReservations(); renderCalendar(); });
+  elements.reservationDate.addEventListener("change", renderReservationTrashPreview);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleTrashAlerts(); });
   elements.startHour.addEventListener("change", () => {
     if (Number(elements.endHour.value) <= Number(elements.startHour.value)) elements.endHour.value = String(Number(elements.startHour.value) + 1);
   });
@@ -940,6 +1223,9 @@ function initialise() {
   elements.weekStart.value = today;
   elements.reservationDate.value = today;
   elements.reservationDate.min = today;
+  renderTrashSchedule();
+  renderReservationTrashPreview();
+  updateTrashNotificationUi();
   applyRoomToControls();
   bindEvents();
   setupAppInstall();
