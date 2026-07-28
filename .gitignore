@@ -12,6 +12,7 @@ functions/.env.*
 # Firebase web app configuration (Firebase API keys are client identifiers,
 # but each deployment has its own values and should be configured locally.)
 public/firebase-config.js
+public/firebase-sw-config.js
 
 # Editor / operating-system files
 .DS_Store

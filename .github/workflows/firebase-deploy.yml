@@ -18,7 +18,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Cloud Functions dependencies
         run: npm install --prefix functions
@@ -29,6 +29,9 @@ jobs:
         env:
           FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
         run: printf '%s' "$FIREBASE_WEB_CONFIG" > public/firebase-config.js
+
+      - name: Create Firebase messaging worker configuration
+        run: node scripts/create-firebase-sw-config.mjs
 
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2

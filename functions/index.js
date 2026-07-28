@@ -1,8 +1,10 @@
 const admin = require("firebase-admin");
+const crypto = require("node:crypto");
 const sharp = require("sharp");
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -19,6 +21,26 @@ const INTERNAL_EMAIL_DOMAIN = "@id.soundcheck.local";
 const MAX_LOGO_ORIGINAL_DATA_URL_LENGTH = 780000;
 const MAX_LOGO_THUMBNAIL_DATA_URL_LENGTH = 90000;
 const LOGO_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const PUSH_TOKEN_PATTERN = /^[A-Za-z0-9_:.-]{20,4096}$/;
+const INVALID_PUSH_TOKEN_CODES = new Set([
+  "messaging/invalid-registration-token",
+  "messaging/registration-token-not-registered",
+]);
+const PUSH_REMINDER_LEASE_MS = 10 * 60 * 1000;
+const PUSH_REMINDER_DEFINITIONS = [
+  { key: "day_before", field: "startAt", offsetMinutes: 24 * 60, title: "합주 예약 1일 전" },
+  { key: "hour_before", field: "startAt", offsetMinutes: 60, title: "합주 예약 1시간 전" },
+  { key: "end_soon", field: "endAt", offsetMinutes: 30, title: "합주 종료 30분 전" },
+];
+const TRASH_DAY_TITLES = [
+  "일반·음식물쓰레기",
+  "재활용품",
+  "일반·음식물·불연성",
+  "재활용품·기타",
+  "일반·음식물쓰레기",
+  "배출 안 함",
+  "배출 안 함",
+];
 
 function badRequest(message) {
   throw new HttpsError("invalid-argument", message);
@@ -124,6 +146,107 @@ function validateReservationRangeInput(data) {
 
 function displayTime(hour) {
   return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function pushTokenId(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function trashTitleForDate(dateText) {
+  const weekday = new Date(`${dateText}T12:00:00+09:00`).getUTCDay();
+  return TRASH_DAY_TITLES[weekday] || "쓰레기 배출 안내";
+}
+
+function reservationDateLabel(dateText) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date(`${dateText}T12:00:00+09:00`));
+}
+
+async function activePushTokenDocsForBand(bandId) {
+  if (!bandId) return [];
+  const snapshot = await db.collection("pushTokens").where("bandId", "==", bandId).get();
+  return snapshot.docs.filter((item) => item.data().enabled !== false && PUSH_TOKEN_PATTERN.test(String(item.data().token || "")));
+}
+
+async function sendPushToBand(bandId, payload) {
+  const tokenDocs = await activePushTokenDocsForBand(bandId);
+  if (!tokenDocs.length) return { attempted: 0, delivered: 0 };
+
+  let delivered = 0;
+  const staleRefs = [];
+  for (let offset = 0; offset < tokenDocs.length; offset += 500) {
+    const chunk = tokenDocs.slice(offset, offset + 500);
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens: chunk.map((item) => item.data().token),
+      data: {
+        title: String(payload.title || "Soundcheck"),
+        body: String(payload.body || "합주실 예약을 확인해 주세요."),
+        url: String(payload.url || "./#schedule"),
+        kind: String(payload.kind || "reservation"),
+        reservationId: String(payload.reservationId || ""),
+      },
+      webpush: { headers: { Urgency: payload.urgent ? "high" : "normal" } },
+    });
+    delivered += response.successCount;
+    response.responses.forEach((result, index) => {
+      if (!result.success && INVALID_PUSH_TOKEN_CODES.has(result.error?.code)) staleRefs.push(chunk[index].ref);
+    });
+  }
+  await Promise.allSettled(staleRefs.map((reference) => reference.delete()));
+  return { attempted: tokenDocs.length, delivered };
+}
+
+function reminderPayload(reservation, definition) {
+  const dateAndTime = `${reservationDateLabel(reservation.date)} ${displayTime(reservation.startHour)}–${displayTime(reservation.endHour)}`;
+  if (definition.key === "end_soon") {
+    return {
+      title: `${definition.title} · ${trashTitleForDate(reservation.date)}`,
+      body: `${reservation.bandName} 합주가 곧 끝납니다. 장비 정리와 오늘의 쓰레기 배출 품목을 확인해 주세요.`,
+      kind: definition.key,
+      reservationId: reservation.id,
+      url: "./#trashSchedule",
+      urgent: true,
+    };
+  }
+  return {
+    title: definition.title,
+    body: `${reservation.bandName} · ${dateAndTime}`,
+    kind: definition.key,
+    reservationId: reservation.id,
+    url: "./#schedule",
+    urgent: definition.key === "hour_before",
+  };
+}
+
+async function claimPushReminder(reservationId, reminderKey) {
+  const reference = db.collection("pushReminderDeliveries").doc(`${reservationId}_${reminderKey}`);
+  const now = Timestamp.now();
+  const claimed = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    const data = snapshot.exists ? snapshot.data() : null;
+    const claimTime = data?.claimedAt?.toMillis?.() || 0;
+    if (data?.sentAt || (claimTime && now.toMillis() - claimTime < PUSH_REMINDER_LEASE_MS)) return false;
+    transaction.set(reference, { reservationId, reminderKey, status: "processing", claimedAt: now }, { merge: true });
+    return true;
+  });
+  return { claimed, reference };
+}
+
+async function dueReservations(definition, now = new Date()) {
+  const targetTime = now.getTime() + (definition.offsetMinutes * 60000);
+  const windowStart = Timestamp.fromMillis(targetTime - (5 * 60000));
+  const windowEnd = Timestamp.fromMillis(targetTime + (5 * 60000));
+  const snapshot = await db.collection("reservations")
+    .where(definition.field, ">=", windowStart)
+    .where(definition.field, "<", windowEnd)
+    .get();
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((reservation) => reservation.status === "confirmed");
 }
 
 async function createServerLogoThumbnail(logoDataUrl) {
@@ -481,6 +604,35 @@ exports.claimBandInvite = onCall(async (request) => {
   return { role: "band_admin", bandName };
 });
 
+exports.registerPushToken = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const profile = await getProfile(auth.uid);
+  const token = String(request.data?.token || "").trim();
+  if (!PUSH_TOKEN_PATTERN.test(token)) badRequest("알림 기기 정보가 올바르지 않습니다.");
+
+  const reference = db.collection("pushTokens").doc(pushTokenId(token));
+  await reference.set({
+    token,
+    uid: auth.uid,
+    bandId: profile.bandId || null,
+    role: profile.role,
+    enabled: true,
+    userAgent: String(request.data?.userAgent || "").slice(0, 300),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { enabled: true };
+});
+
+exports.unregisterPushToken = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const token = String(request.data?.token || "").trim();
+  if (!PUSH_TOKEN_PATTERN.test(token)) return { removed: false };
+  const reference = db.collection("pushTokens").doc(pushTokenId(token));
+  const snapshot = await reference.get();
+  if (snapshot.exists && snapshot.data().uid === auth.uid) await reference.delete();
+  return { removed: true };
+});
+
 exports.createReservation = onCall(async (request) => {
   const auth = requireAuth(request);
   const profile = await getProfile(auth.uid);
@@ -495,6 +647,7 @@ exports.createReservation = onCall(async (request) => {
 
   const bandRef = db.collection("bands").doc(bandId);
   const reservationRef = db.collection("reservations").doc();
+  let reservationBandName = "";
   const startAt = Timestamp.fromDate(parseReservationDate(date, startHour));
   const endAt = Timestamp.fromDate(parseReservationDate(date, endHour));
   const slots = Array.from({ length: endHour - startHour }, (_, index) => startHour + index);
@@ -517,6 +670,7 @@ exports.createReservation = onCall(async (request) => {
     }
 
     const bandData = band.data();
+    reservationBandName = String(bandData.name || "예약 밴드");
     transaction.set(reservationRef, {
       bandId,
       bandName: bandData.name,
@@ -542,6 +696,15 @@ exports.createReservation = onCall(async (request) => {
     }
   });
 
+  await sendPushToBand(bandId, {
+    title: "합주실 예약 완료",
+    body: `${reservationBandName} · ${reservationDateLabel(date)} ${displayTime(startHour)}–${displayTime(endHour)} · ${trashTitleForDate(date)}`,
+    kind: "reservation_created",
+    reservationId: reservationRef.id,
+    url: "./#schedule",
+    urgent: true,
+  }).catch((error) => console.error("Could not send reservation confirmation push", error));
+
   return { reservationId: reservationRef.id };
 });
 
@@ -552,12 +715,14 @@ exports.cancelReservation = onCall(async (request) => {
   if (!reservationId) badRequest("예약 정보가 없습니다.");
 
   const reservationRef = db.collection("reservations").doc(reservationId);
+  let cancelledReservation = null;
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(reservationRef);
     if (!snapshot.exists || snapshot.data().status !== "confirmed") {
       throw new HttpsError("not-found", "취소할 활성 예약을 찾지 못했습니다.");
     }
     const reservation = snapshot.data();
+    cancelledReservation = { id: reservationId, ...reservation };
     if (profile.role !== "main_admin" && reservation.bandId !== profile.bandId) {
       throw new HttpsError("permission-denied", "자신의 밴드 예약만 취소할 수 있습니다.");
     }
@@ -579,5 +744,50 @@ exports.cancelReservation = onCall(async (request) => {
     }
   });
 
+  if (cancelledReservation) {
+    await sendPushToBand(cancelledReservation.bandId, {
+      title: "합주실 예약 취소",
+      body: `${cancelledReservation.bandName} · ${reservationDateLabel(cancelledReservation.date)} ${displayTime(cancelledReservation.startHour)}–${displayTime(cancelledReservation.endHour)}`,
+      kind: "reservation_cancelled",
+      reservationId,
+      url: "./#schedule",
+      urgent: true,
+    }).catch((error) => console.error("Could not send reservation cancellation push", error));
+  }
   return { cancelled: true };
 });
+
+exports.sendReservationReminders = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    timeZone: "Asia/Seoul",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async () => {
+    const now = new Date();
+    for (const definition of PUSH_REMINDER_DEFINITIONS) {
+      const reservations = await dueReservations(definition, now);
+      for (const reservation of reservations) {
+        const claim = await claimPushReminder(reservation.id, definition.key);
+        if (!claim.claimed) continue;
+        try {
+          const result = await sendPushToBand(reservation.bandId, reminderPayload(reservation, definition));
+          if (!result.attempted) {
+            await claim.reference.delete();
+            continue;
+          }
+          await claim.reference.set({
+            status: "sent",
+            sentAt: FieldValue.serverTimestamp(),
+            attempted: result.attempted,
+            delivered: result.delivered,
+          }, { merge: true });
+        } catch (error) {
+          console.error(`Could not send ${definition.key} reminder for ${reservation.id}`, error);
+          await claim.reference.delete().catch(() => {});
+        }
+      }
+    }
+  },
+);

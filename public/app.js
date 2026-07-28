@@ -20,10 +20,17 @@ import {
   where,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
+import {
+  deleteToken,
+  getMessaging,
+  getToken,
+  isSupported as isMessagingSupported,
+  onMessage,
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260728.1";
+const APP_VERSION = "20260728.2";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -95,6 +102,10 @@ const state = {
   reservations: [],
   announcements: [],
   room: DEFAULT_ROOM,
+  mobileScheduleMode: "today",
+  messaging: null,
+  pushToken: "",
+  foregroundMessagingBound: false,
   unsubs: [],
 };
 const migratingLegacyLogoIds = new Set();
@@ -152,6 +163,7 @@ function loginIdFromCurrentUser() {
 }
 
 let deferredInstallPrompt;
+let serviceWorkerRegistrationPromise;
 
 function setupAppInstall() {
   const button = elements.installAppButton;
@@ -180,8 +192,13 @@ function setupAppInstall() {
 }
 
 function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}), { once: true });
+  if (!("serviceWorker" in navigator)) return Promise.resolve(null);
+  if (!serviceWorkerRegistrationPromise) {
+    serviceWorkerRegistrationPromise = navigator.serviceWorker.register("./sw.js")
+      .then(() => navigator.serviceWorker.ready)
+      .catch(() => null);
+  }
+  return serviceWorkerRegistrationPromise;
 }
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -303,7 +320,7 @@ function errorMessage(error) {
 }
 
 function trashNotificationSupported() {
-  return "Notification" in window && "serviceWorker" in navigator;
+  return "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
 }
 
 function trashNotificationsEnabled() {
@@ -312,23 +329,43 @@ function trashNotificationsEnabled() {
     && localStorage.getItem(TRASH_ALERT_ENABLED_KEY) === "1";
 }
 
+async function messagingInstance() {
+  if (!trashNotificationSupported() || !(await isMessagingSupported())) {
+    throw new Error("이 브라우저에서는 푸시 알림을 사용할 수 없습니다.");
+  }
+  if (!state.messaging) state.messaging = getMessaging(app);
+  return state.messaging;
+}
+
+async function obtainPushToken() {
+  const messaging = await messagingInstance();
+  const serviceWorkerRegistration = await registerServiceWorker();
+  if (!serviceWorkerRegistration) throw new Error("알림 서비스를 준비하지 못했습니다. 페이지를 새로고침해 주세요.");
+  const options = { serviceWorkerRegistration };
+  if (firebaseConfig.vapidKey) options.vapidKey = firebaseConfig.vapidKey;
+  const token = await getToken(messaging, options);
+  if (!token) throw new Error("기기 알림 정보를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  return token;
+}
+
 function updateTrashNotificationUi() {
   const buttons = [elements.trashNotificationButton, elements.trashDialogNotificationButton].filter(Boolean);
-  let buttonText = `종료 ${TRASH_REMINDER_MINUTES}분 전 알림 켜기`;
-  let statusText = "알림을 허용하면 이 기기에서 합주 종료 전에 알려드립니다. 사이트나 홈 화면 앱이 실행 중이어야 합니다.";
+  let buttonText = "예약 푸시 알림 켜기";
+  let statusText = "로그인 후 알림을 켜면 앱을 닫아도 예약 1일 전·1시간 전·종료 30분 전에 알려드립니다.";
   let disabled = false;
   if (!trashNotificationSupported()) {
-    buttonText = "이 브라우저는 알림 미지원";
+    buttonText = "이 브라우저는 푸시 알림 미지원";
     statusText = "알림을 지원하는 브라우저에서 이용하거나 홈 화면 앱으로 추가해 주세요.";
     disabled = true;
   } else if (Notification.permission === "denied") {
     buttonText = "브라우저에서 알림 차단됨";
     statusText = "브라우저 사이트 설정에서 Soundcheck 알림을 허용해 주세요.";
     disabled = true;
+  } else if (!state.profile) {
+    statusText = "로그인한 뒤 이 기기에서 받을 예약 푸시 알림을 켤 수 있습니다.";
   } else if (trashNotificationsEnabled()) {
-    buttonText = `종료 ${TRASH_REMINDER_MINUTES}분 전 알림 켜짐`;
-    statusText = "알림이 켜졌습니다. 사이트나 홈 화면 앱이 실행 중일 때 기기 알림으로 알려드립니다.";
-    disabled = true;
+    buttonText = "예약 푸시 알림 끄기";
+    statusText = "푸시 알림이 켜졌습니다. 앱을 닫아도 예약 1일 전·1시간 전·종료 30분 전에 알려드립니다.";
   }
   buttons.forEach((button) => {
     button.textContent = buttonText;
@@ -337,9 +374,72 @@ function updateTrashNotificationUi() {
   if (elements.trashNotificationStatus) elements.trashNotificationStatus.textContent = statusText;
 }
 
+async function setupForegroundMessaging() {
+  if (state.foregroundMessagingBound || !trashNotificationsEnabled()) return;
+  const messaging = await messagingInstance();
+  state.foregroundMessagingBound = true;
+  onMessage(messaging, (payload) => {
+    const data = payload.data || {};
+    const title = data.title || "Soundcheck 예약 알림";
+    const body = data.body || "합주실 예약을 확인해 주세요.";
+    showToast(`${title} · ${body}`);
+    if (data.kind === "end_soon") {
+      const reservation = state.reservations.find((item) => item.id === data.reservationId);
+      if (reservation) {
+        markTrashAlertDelivered(reservation);
+        showTrashNotice(reservation.date, reservation, true);
+      }
+    }
+  });
+}
+
+async function syncPushSubscription({ silent = false } = {}) {
+  if (!state.profile || !auth.currentUser || !trashNotificationsEnabled()) return null;
+  try {
+    const token = await obtainPushToken();
+    await call("registerPushToken", { token, userAgent: navigator.userAgent });
+    state.pushToken = token;
+    await setupForegroundMessaging();
+    updateTrashNotificationUi();
+    scheduleTrashAlerts();
+    return token;
+  } catch (error) {
+    if (!silent) throw error;
+    return null;
+  }
+}
+
+async function disablePushNotifications() {
+  try {
+    let token = state.pushToken;
+    if (!token && Notification.permission === "granted") token = await obtainPushToken().catch(() => "");
+    if (token && auth.currentUser) await call("unregisterPushToken", { token }).catch(() => {});
+    if (state.messaging) await deleteToken(state.messaging).catch(() => false);
+  } finally {
+    state.pushToken = "";
+    localStorage.removeItem(TRASH_ALERT_ENABLED_KEY);
+    updateTrashNotificationUi();
+    scheduleTrashAlerts();
+  }
+  showToast("이 기기의 예약 푸시 알림을 껐습니다.");
+}
+
+async function unregisterPushForSignOut() {
+  if (!auth.currentUser || !trashNotificationsEnabled()) return;
+  const token = state.pushToken || await obtainPushToken().catch(() => "");
+  if (token) await call("unregisterPushToken", { token }).catch(() => {});
+  state.pushToken = "";
+}
+
 async function enableTrashNotifications() {
+  if (!state.profile || !auth.currentUser) {
+    openAuth();
+    showToast("로그인한 뒤 예약 푸시 알림을 켜 주세요.");
+    return;
+  }
+  if (trashNotificationsEnabled()) return disablePushNotifications();
   if (!trashNotificationSupported()) {
-    showToast("이 브라우저에서는 알림을 사용할 수 없습니다. 홈 화면 앱으로 추가한 뒤 다시 시도해 주세요.", true);
+    showToast("이 브라우저에서는 푸시 알림을 사용할 수 없습니다. 홈 화면 앱으로 추가한 뒤 다시 시도해 주세요.", true);
     return;
   }
   if (Notification.permission === "denied") {
@@ -347,19 +447,23 @@ async function enableTrashNotifications() {
     showToast("브라우저 사이트 설정에서 알림 차단을 해제해 주세요.", true);
     return;
   }
-  const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-  if (permission !== "granted") {
+  try {
+    const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+    if (permission !== "granted") {
+      updateTrashNotificationUi();
+      showToast("알림 권한이 허용되지 않았습니다.", true);
+      return;
+    }
+    localStorage.setItem(TRASH_ALERT_ENABLED_KEY, "1");
+    const token = await syncPushSubscription();
+    if (!token) throw new Error("푸시 알림 등록에 실패했습니다.");
+    showToast("예약 1일 전·1시간 전·종료 30분 전 푸시 알림을 켰습니다.");
+  } catch (error) {
+    localStorage.removeItem(TRASH_ALERT_ENABLED_KEY);
     updateTrashNotificationUi();
-    showToast("알림 권한이 허용되지 않았습니다.", true);
-    return;
+    showToast(errorMessage(error), true);
   }
-  localStorage.setItem(TRASH_ALERT_ENABLED_KEY, "1");
-  await navigator.serviceWorker.ready.catch(() => null);
-  updateTrashNotificationUi();
-  scheduleTrashAlerts();
-  showToast(`합주 종료 ${TRASH_REMINDER_MINUTES}분 전 알림을 켰습니다.`);
 }
-
 function trashAlertHistory() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TRASH_ALERT_HISTORY_KEY) || "{}");
@@ -453,6 +557,7 @@ function scheduleTrashReminder(reservation) {
 
 function scheduleTrashAlerts() {
   clearTrashAlertTimers();
+  if (trashNotificationsEnabled()) return;
   state.reservations.filter(reservationBelongsToCurrentUser).forEach(scheduleTrashReminder);
 }
 function setDialogView(view) {
@@ -590,10 +695,12 @@ function renderLiveTimetable() {
   if (!reservation) {
     badge.textContent = "현재 예약 없음";
     badge.style.removeProperty("--live-color");
+    renderMobileScheduleList();
     return;
   }
   badge.textContent = `${reservation.bandName} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00`;
   badge.style.setProperty("--live-color", String(reservation.bandColor || "#52c8d0"));
+  renderMobileScheduleList();
 }
 
 async function loadLiveReservations() {
@@ -642,6 +749,76 @@ function renderBandLogoPreview() {
   const previewBand = { ...band, logoDataUrl: "", logoThumbnailDataUrl: previewSource };
   elements.bandLogoPreview.innerHTML = bandLogoMarkup(previewBand, "band-logo-preview-image");
 }
+function reservationIsLive(reservation) {
+  const now = seoulNowParts();
+  const currentMinutes = (now.hour * 60) + now.minute;
+  return reservation.date === now.date
+    && (Number(reservation.startHour) * 60) <= currentMinutes
+    && (Number(reservation.endHour) * 60) > currentMinutes;
+}
+
+function mobileScheduleDates() {
+  if (state.mobileScheduleMode === "today") return [todayInSeoul()];
+  const baseDate = elements.weekStart.value || todayInSeoul();
+  return Array.from({ length: 7 }, (_, index) => addDays(baseDate, index));
+}
+
+function renderMobileScheduleList() {
+  if (!elements.mobileScheduleList) return;
+  const dates = mobileScheduleDates();
+  const reservations = state.reservations
+    .filter((reservation) => dates.includes(reservation.date))
+    .sort((a, b) => a.date.localeCompare(b.date) || Number(a.startHour) - Number(b.startHour));
+  elements.mobileScheduleCount.textContent = `${reservations.length}건`;
+  elements.mobileTodayButton.classList.toggle("is-active", state.mobileScheduleMode === "today");
+  elements.mobileTodayButton.setAttribute("aria-selected", String(state.mobileScheduleMode === "today"));
+  elements.mobileWeekButton.classList.toggle("is-active", state.mobileScheduleMode === "week");
+  elements.mobileWeekButton.setAttribute("aria-selected", String(state.mobileScheduleMode === "week"));
+  elements.mobileScheduleList.innerHTML = dates.map((date) => {
+    const dayReservations = reservations.filter((reservation) => reservation.date === date);
+    const dayMarkup = dayReservations.length ? dayReservations.map((reservation) => {
+      const isLive = reservationIsLive(reservation);
+      const trash = trashScheduleForDate(reservation.date);
+      return `
+        <button class="mobile-schedule-item ${isLive ? "is-live" : ""}" type="button" data-reservation-id="${reservation.id}" style="--reservation-color:${escapeHtml(reservation.bandColor || "#52c8d0")}">
+          <span class="mobile-schedule-time">${pad(reservation.startHour)}:00<br>— ${pad(reservation.endHour)}:00</span>
+          <span class="mobile-schedule-band">
+            ${isLive ? '<span class="mobile-live-label">NOW PLAYING</span>' : ""}
+            <strong>${escapeHtml(reservation.bandName)}</strong>
+            <span>${escapeHtml(trash.title)}</span>
+          </span>
+        </button>`;
+    }).join("") : '<p class="mobile-day-empty">예약된 합주가 없습니다.</p>';
+    return `
+      <article class="mobile-day-group">
+        <div class="mobile-day-heading ${date === todayInSeoul() ? "is-today" : ""}">
+          <strong>${escapeHtml(humanDate(date, true))}${date === todayInSeoul() ? " · 오늘" : ""}</strong>
+          <span>${dayReservations.length}건</span>
+        </div>
+        ${dayMarkup}
+      </article>`;
+  }).join("");
+}
+
+function setMobileScheduleMode(mode) {
+  state.mobileScheduleMode = mode === "week" ? "week" : "today";
+  const today = todayInSeoul();
+  const from = elements.weekStart.value || today;
+  const to = addDays(from, 6);
+  if (state.mobileScheduleMode === "today" && (today < from || today > to)) {
+    elements.weekStart.value = today;
+    if (state.profile) subscribeToAppData();
+    else loadPublicReservations();
+  }
+  renderMobileScheduleList();
+}
+
+function toggleMobileTable() {
+  const isOpen = elements.schedule.classList.toggle("is-mobile-table-open");
+  elements.mobileTableToggle.setAttribute("aria-expanded", String(isOpen));
+  elements.mobileTableToggle.textContent = isOpen ? "전체 시간표 접기" : "전체 시간표 펼쳐보기";
+}
+
 function renderCalendar() {
   const baseDate = elements.weekStart.value || todayInSeoul();
   const days = Array.from({ length: 7 }, (_, index) => addDays(baseDate, index));
@@ -665,6 +842,7 @@ function renderCalendar() {
     }
   }
   elements.calendarWrap.innerHTML = `<div class="calendar">${slots.join("")}</div>`;
+  renderMobileScheduleList();
 }
 
 function renderMyReservations() {
@@ -1176,10 +1354,18 @@ function bindEvents() {
   elements.announcementForm.addEventListener("submit", handleAnnouncement);
   elements.settingsForm.addEventListener("submit", handleSettings);
   elements.signOutButton.addEventListener("click", async () => {
+    await unregisterPushForSignOut();
     forgetLoginId();
     await signOut(auth);
   });
-  elements.weekStart.addEventListener("change", () => { if (state.profile) subscribeToAppData(); else loadPublicReservations(); renderCalendar(); });
+  elements.mobileTodayButton.addEventListener("click", () => setMobileScheduleMode("today"));
+  elements.mobileWeekButton.addEventListener("click", () => setMobileScheduleMode("week"));
+  elements.mobileTableToggle.addEventListener("click", toggleMobileTable);
+  elements.weekStart.addEventListener("change", () => {
+    state.mobileScheduleMode = "week";
+    if (state.profile) subscribeToAppData(); else loadPublicReservations();
+    renderCalendar();
+  });
   elements.reservationDate.addEventListener("change", renderReservationTrashPreview);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleTrashAlerts(); });
   elements.startHour.addEventListener("change", () => {
@@ -1195,6 +1381,10 @@ function bindEvents() {
     if (bandId) showBandLogo(bandId);
   });
   elements.calendarWrap.addEventListener("click", (event) => {
+    const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
+    if (id) showReservation(id);
+  });
+  elements.mobileScheduleList.addEventListener("click", (event) => {
     const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
     if (id) showReservation(id);
   });
@@ -1245,8 +1435,12 @@ function initialise() {
     state.firebaseUser = user;
     await refreshProfile();
     renderProfile();
-    if (state.profile) subscribeToAppData();
-    else {
+    updateTrashNotificationUi();
+    if (state.profile) {
+      subscribeToAppData();
+      await syncPushSubscription({ silent: true });
+    } else {
+      state.pushToken = "";
       clearAppSubscriptions();
       loadPublicReservations();
     }

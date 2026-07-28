@@ -69,6 +69,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Push tokens and reminder delivery receipts contain private device data and
+    // are only accessed by trusted Cloud Functions.
+    match /pushTokens/{tokenId} {
+      allow read, write: if false;
+    }
+
+    match /pushReminderDeliveries/{deliveryId} {
+      allow read, write: if false;
+    }
+
     match /system/{document=**} {
       allow read, write: if false;
     }

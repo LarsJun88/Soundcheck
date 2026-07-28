@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260728.1" />
+    <meta name="soundcheck-version" content="20260728.2" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -64,7 +64,7 @@
       <section id="trashSchedule" class="trash-section page-width" aria-labelledby="trashScheduleTitle">
         <div class="section-heading trash-section-heading">
           <div><p class="eyebrow">CLEAN ROOM ROUTINE</p><h2 id="trashScheduleTitle">요일별 쓰레기 배출</h2></div>
-          <button id="trashNotificationButton" class="button button-light" type="button">종료 30분 전 알림 켜기</button>
+          <button id="trashNotificationButton" class="button button-light" type="button">예약 푸시 알림 켜기</button>
         </div>
         <div class="trash-guide"><strong>배출 시간 · 오후 6시–밤 10시</strong><span>요일별 품목을 확인하고 종류별로 분리해 주세요.</span></div>
         <div id="trashScheduleGrid" class="trash-schedule-grid" aria-live="polite"></div>
@@ -90,6 +90,18 @@
             </div>
           </div>
           <div class="calendar-note"><span class="legend-free"></span> 비어 있는 시간 <span class="legend-booked"></span> 예약 완료 · 클릭하면 예약 상세를 볼 수 있습니다.</div>
+          <div class="mobile-schedule" aria-labelledby="mobileScheduleTitle">
+            <div class="mobile-schedule-head">
+              <div><p class="eyebrow">QUICK VIEW</p><h3 id="mobileScheduleTitle">모바일 일정 보기</h3></div>
+              <span id="mobileScheduleCount" class="mobile-schedule-count">0건</span>
+            </div>
+            <div class="mobile-schedule-tabs" role="tablist" aria-label="일정 표시 범위">
+              <button id="mobileTodayButton" class="mobile-schedule-tab is-active" type="button" role="tab" aria-selected="true">오늘</button>
+              <button id="mobileWeekButton" class="mobile-schedule-tab" type="button" role="tab" aria-selected="false">이번 주</button>
+            </div>
+            <div id="mobileScheduleList" class="mobile-schedule-list" aria-live="polite"></div>
+            <button id="mobileTableToggle" class="mobile-table-toggle" type="button" aria-expanded="false">전체 시간표 펼쳐보기</button>
+          </div>
           <div id="calendarWrap" class="calendar-wrap" aria-live="polite"></div>
         </div>
       </section>
@@ -244,7 +256,7 @@
       <h2 id="trashNoticeDialogTitle">쓰레기 배출 안내</h2>
       <p id="trashNoticeDialogInfo" class="dialog-copy"></p>
       <div id="trashNoticeDialogBody" class="trash-notice-dialog-body"></div>
-      <button id="trashDialogNotificationButton" class="button button-primary form-submit" type="button">종료 30분 전 알림 받기</button>
+      <button id="trashDialogNotificationButton" class="button button-primary form-submit" type="button">예약 푸시 알림 받기</button>
     </dialog>
 
     <dialog id="bandLogoDialog" class="band-logo-dialog">
@@ -257,6 +269,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260728.1"></script>
+    <script type="module" src="./app.js?v=20260728.2"></script>
   </body>
 </html>
