@@ -9,7 +9,7 @@ try {
 } catch (error) {
   messaging = null;
 }
-const SHELL_CACHE = "soundcheck-shell-v17";
+const SHELL_CACHE = "soundcheck-shell-v18";
 const APP_SHELL = [
   "./",
   "./index.html",
