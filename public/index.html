@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260806.2" />
+    <meta name="soundcheck-version" content="20260806.3" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -19,6 +19,10 @@
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./rock-theme.css" />
+    <style id="bottom-navigation-critical">
+      #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
+      @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
+    </style>
   </head>
   <body>
     <div class="noise" aria-hidden="true"></div>
@@ -29,6 +33,7 @@
       </a>
       <div class="topbar-actions">
         <span id="profileChip" class="profile-chip hidden"></span>
+        <button id="refreshAppButton" class="button button-refresh" type="button" aria-label="앱 새로고침" title="최신 버전 새로고침"><span class="refresh-icon" aria-hidden="true">↻</span><span class="refresh-label">새로고침</span></button>
         <button id="installAppButton" class="button button-install hidden" type="button">홈 화면에 추가</button>
         <button id="openAuthButton" class="button button-dark">로그인 / 시작</button>
         <button id="signOutButton" class="text-button hidden">로그아웃</button>
@@ -356,6 +361,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260806.2"></script>
+    <script type="module" src="./app.js?v=20260806.3"></script>
   </body>
 </html>

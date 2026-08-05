@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.2";
+const APP_VERSION = "20260806.3";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -250,6 +250,32 @@ function registerServiceWorker() {
       .catch(() => null);
   }
   return serviceWorkerRegistrationPromise;
+}
+
+async function refreshApplication() {
+  const button = elements.refreshAppButton;
+  if (button?.disabled) return;
+  if (button) {
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+  }
+  showToast("최신 버전을 불러오는 중입니다.");
+  try {
+    const registration = await registerServiceWorker();
+    const tasks = [];
+    if (registration) tasks.push(registration.update());
+    if ("caches" in window) {
+      tasks.push(caches.keys().then((keys) => Promise.all(
+        keys.filter((key) => key.startsWith("soundcheck-shell-")).map((key) => caches.delete(key)),
+      )));
+    }
+    await Promise.allSettled(tasks);
+  } finally {
+    const url = new URL(window.location.href);
+    url.searchParams.set("refresh", Date.now().toString());
+    window.location.replace(url.toString());
+  }
 }
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -1632,6 +1658,7 @@ async function loadMonthlyUsageStats() {
   }
 }
 function bindEvents() {
+  elements.refreshAppButton.addEventListener("click", refreshApplication);
   elements.openAuthButton.addEventListener("click", openAuth);
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.reservationLoginButton.addEventListener("click", openAuth);
