@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.4";
+const APP_VERSION = "20260806.5";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -215,6 +215,7 @@ function loginIdFromCurrentUser() {
 
 let deferredInstallPrompt;
 let serviceWorkerRegistrationPromise;
+let lastServiceWorkerUpdateCheckAt = 0;
 
 function setupAppInstall() {
   const button = elements.installAppButton;
@@ -245,11 +246,22 @@ function setupAppInstall() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return Promise.resolve(null);
   if (!serviceWorkerRegistrationPromise) {
-    serviceWorkerRegistrationPromise = navigator.serviceWorker.register("./sw.js")
-      .then(() => navigator.serviceWorker.ready)
+    serviceWorkerRegistrationPromise = navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+      .then((registration) => {
+        registration.update().catch(() => null);
+        return navigator.serviceWorker.ready;
+      })
       .catch(() => null);
   }
   return serviceWorkerRegistrationPromise;
+}
+
+async function checkForApplicationUpdate() {
+  const now = Date.now();
+  if (now - lastServiceWorkerUpdateCheckAt < 60000) return;
+  lastServiceWorkerUpdateCheckAt = now;
+  const registration = await registerServiceWorker();
+  if (registration) await registration.update().catch(() => null);
 }
 
 async function refreshApplication() {
@@ -263,14 +275,7 @@ async function refreshApplication() {
   showToast("최신 버전을 불러오는 중입니다.");
   try {
     const registration = await registerServiceWorker();
-    const tasks = [];
-    if (registration) tasks.push(registration.update());
-    if ("caches" in window) {
-      tasks.push(caches.keys().then((keys) => Promise.all(
-        keys.filter((key) => key.startsWith("soundcheck-shell-")).map((key) => caches.delete(key)),
-      )));
-    }
-    await Promise.allSettled(tasks);
+    if (registration) await registration.update().catch(() => null);
   } finally {
     const url = new URL(window.location.href);
     url.searchParams.set("refresh", Date.now().toString());
@@ -1742,7 +1747,11 @@ function bindEvents() {
     if (report?.photoDataUrl) window.open(report.photoDataUrl, "_blank", "noopener,noreferrer");
   });
   elements.statsMonth.addEventListener("change", loadMonthlyUsageStats);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleTrashAlerts(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    scheduleTrashAlerts();
+    checkForApplicationUpdate();
+  });
   elements.startHour.addEventListener("change", () => {
     if (Number(elements.endHour.value) <= Number(elements.startHour.value)) elements.endHour.value = String(Number(elements.startHour.value) + 1);
   });
