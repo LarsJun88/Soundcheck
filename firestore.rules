@@ -13,7 +13,8 @@ service cloud.firestore {
       return signedIn() && profile().data.role == 'main_admin';
     }
 
-    // A profile is only written by trusted callable Cloud Functions. It includes\r?\n    // the role and band membership, neither of which must be client-editable.
+    // A profile is only written by trusted callable Cloud Functions. It includes
+    // the role and band membership, neither of which must be client-editable.
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isMainAdmin());
       allow list: if isMainAdmin();
@@ -69,6 +70,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Equipment reports may include private photos and are only accessed through
+    // callable functions, which enforce band-member and main-admin permissions.
+    match /equipmentReports/{reportId} {
+      allow read, write: if false;
+    }
     // Push tokens and reminder delivery receipts contain private device data and
     // are only accessed by trusted Cloud Functions.
     match /pushTokens/{tokenId} {

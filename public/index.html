@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260728.2" />
+    <meta name="soundcheck-version" content="20260806.1" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -84,28 +84,47 @@
         <div class="page-width">
           <div class="section-heading schedule-heading">
             <div><p class="eyebrow">SHARED CALENDAR</p><h2>합주실 시간표</h2></div>
-            <div class="week-picker">
-              <label for="weekStart">기준 날짜</label>
-              <input id="weekStart" type="date" />
+            <div class="schedule-controls">
+              <div class="schedule-view-switch" role="tablist" aria-label="시간표 보기 방식">
+                <button id="weeklyViewButton" class="schedule-view-button is-active" type="button" role="tab" aria-selected="true">주간</button>
+                <button id="monthlyViewButton" class="schedule-view-button" type="button" role="tab" aria-selected="false">월간</button>
+              </div>
+              <div id="weekPicker" class="week-picker">
+                <label for="weekStart">기준 날짜</label>
+                <input id="weekStart" type="date" />
+              </div>
+              <div id="monthPicker" class="month-picker hidden">
+                <button id="previousMonthButton" type="button" aria-label="이전 달">‹</button>
+                <input id="calendarMonth" type="month" aria-label="조회할 달" />
+                <button id="nextMonthButton" type="button" aria-label="다음 달">›</button>
+              </div>
             </div>
           </div>
-          <div class="calendar-note"><span class="legend-free"></span> 비어 있는 시간 <span class="legend-booked"></span> 예약 완료 · 클릭하면 예약 상세를 볼 수 있습니다.</div>
-          <div class="mobile-schedule" aria-labelledby="mobileScheduleTitle">
-            <div class="mobile-schedule-head">
-              <div><p class="eyebrow">QUICK VIEW</p><h3 id="mobileScheduleTitle">모바일 일정 보기</h3></div>
-              <span id="mobileScheduleCount" class="mobile-schedule-count">0건</span>
+          <div id="weeklyScheduleView">
+            <div class="calendar-note"><span class="legend-free"></span> 비어 있는 시간 <span class="legend-booked"></span> 예약 완료 · 클릭하면 예약 상세를 볼 수 있습니다.</div>
+            <div class="mobile-schedule" aria-labelledby="mobileScheduleTitle">
+              <div class="mobile-schedule-head">
+                <div><p class="eyebrow">QUICK VIEW</p><h3 id="mobileScheduleTitle">모바일 일정 보기</h3></div>
+                <span id="mobileScheduleCount" class="mobile-schedule-count">0건</span>
+              </div>
+              <div class="mobile-schedule-tabs" role="tablist" aria-label="일정 표시 범위">
+                <button id="mobileTodayButton" class="mobile-schedule-tab is-active" type="button" role="tab" aria-selected="true">오늘</button>
+                <button id="mobileWeekButton" class="mobile-schedule-tab" type="button" role="tab" aria-selected="false">이번 주</button>
+              </div>
+              <div id="mobileScheduleList" class="mobile-schedule-list" aria-live="polite"></div>
+              <button id="mobileTableToggle" class="mobile-table-toggle" type="button" aria-expanded="false">전체 시간표 펼쳐보기</button>
             </div>
-            <div class="mobile-schedule-tabs" role="tablist" aria-label="일정 표시 범위">
-              <button id="mobileTodayButton" class="mobile-schedule-tab is-active" type="button" role="tab" aria-selected="true">오늘</button>
-              <button id="mobileWeekButton" class="mobile-schedule-tab" type="button" role="tab" aria-selected="false">이번 주</button>
-            </div>
-            <div id="mobileScheduleList" class="mobile-schedule-list" aria-live="polite"></div>
-            <button id="mobileTableToggle" class="mobile-table-toggle" type="button" aria-expanded="false">전체 시간표 펼쳐보기</button>
+            <div id="calendarWrap" class="calendar-wrap" aria-live="polite"></div>
           </div>
-          <div id="calendarWrap" class="calendar-wrap" aria-live="polite"></div>
+          <div id="monthlyScheduleView" class="monthly-schedule-view hidden">
+            <div class="calendar-note">한 달의 예약을 한 화면에서 확인할 수 있습니다. 팀 이름을 누르면 상세 일정이 열립니다.</div>
+            <div class="month-calendar-wrap">
+              <div class="month-weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+              <div id="monthCalendar" class="month-calendar" aria-live="polite"></div>
+            </div>
+          </div>
         </div>
       </section>
-
       <div id="memberAreaAnchor" hidden></div>
       <section id="memberArea" class="member-area page-width hidden" aria-label="예약 관리">
         <div class="member-intro">
@@ -131,14 +150,43 @@
                 <select id="endHour" required></select>
               </label>
             </div>
+            <label class="repeat-toggle"><input id="repeatReservation" type="checkbox" /><span><strong>매주 반복 예약</strong><small>같은 요일과 시간으로 한 번에 예약합니다.</small></span></label>
+            <label id="repeatWeeksField" class="hidden">총 반복 횟수
+              <select id="repeatWeeks">
+                <option value="2">2주</option><option value="3">3주</option><option value="4" selected>4주</option>
+                <option value="5">5주</option><option value="6">6주</option><option value="8">8주</option><option value="10">10주</option><option value="12">12주</option>
+              </select>
+            </label>
+            <p id="repeatReservationSummary" class="repeat-summary hidden"></p>
             <button class="button button-primary form-submit" type="submit">시간 예약하기</button>
-            <p class="form-help">선택한 모든 시간대가 비어 있을 때에만 예약됩니다.</p>
+            <p class="form-help">반복 예약은 모든 주차가 비어 있을 때에만 한 번에 저장됩니다.</p>
           </form>
           <div class="panel upcoming-panel">
             <div class="panel-heading"><h3>내 예약</h3><span id="myReservationCount">0건</span></div>
             <div id="myReservationList" class="my-reservation-list"><p class="empty-message">예정된 예약이 없습니다.</p></div>
           </div>
         </div>
+        <section class="equipment-area" aria-labelledby="equipmentTitle">
+          <div class="section-heading equipment-heading">
+            <div><p class="eyebrow">GEAR CHECK</p><h2 id="equipmentTitle">장비 이상 신고</h2></div>
+            <span id="equipmentOpenCount" class="notice-count">불러오는 중</span>
+          </div>
+          <div class="equipment-layout">
+            <form id="equipmentReportForm" class="panel equipment-report-form">
+              <div class="panel-heading"><h3>문제 알리기</h3><span>사진 선택</span></div>
+              <label>장비 이름<input id="equipmentName" maxlength="60" required placeholder="예: 기타 앰프 1번" /></label>
+              <label>이상 내용<textarea id="equipmentDescription" maxlength="600" required placeholder="증상과 확인한 내용을 자세히 적어 주세요."></textarea></label>
+              <label>사진 (선택)<input id="equipmentPhoto" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+              <div id="equipmentPhotoPreview" class="equipment-photo-preview hidden"></div>
+              <button class="button button-primary form-submit" type="submit">장비 이상 신고하기</button>
+              <p class="form-help">사진은 전송 전에 자동으로 용량을 줄입니다.</p>
+            </form>
+            <div class="panel equipment-list-panel">
+              <div class="panel-heading"><h3>장비 상태</h3><button id="refreshEquipmentButton" class="text-button" type="button">새로고침</button></div>
+              <div id="equipmentReportList" class="equipment-report-list"><p class="empty-message">장비 상태를 불러오는 중입니다.</p></div>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section id="adminArea" class="admin-area page-width hidden" aria-label="메인 관리자 도구">
@@ -187,6 +235,17 @@
             </div>
           </form>
         </div>
+        <section class="usage-stats" aria-labelledby="usageStatsTitle">
+          <div class="section-heading stats-heading">
+            <div><p class="eyebrow">ROOM INSIGHTS</p><h2 id="usageStatsTitle">월별 이용 통계</h2></div>
+            <label class="stats-month-label">조회 월<input id="statsMonth" type="month" /></label>
+          </div>
+          <div id="usageStatsSummary" class="stats-summary" aria-live="polite"><p class="empty-message">통계를 불러오는 중입니다.</p></div>
+          <div class="stats-detail-grid">
+            <div class="panel"><div class="panel-heading"><h3>밴드별 이용시간</h3><span>예약 기준</span></div><div id="bandUsageChart" class="band-usage-chart"></div></div>
+            <div class="panel"><div class="panel-heading"><h3>인기 시간대</h3><span>상위 3개</span></div><div id="popularHoursList" class="popular-hours-list"></div></div>
+          </div>
+        </section>
         <div id="inviteResult" class="invite-result hidden" role="status"></div>
       </section>
     </main>
@@ -269,6 +328,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260728.2"></script>
+    <script type="module" src="./app.js?v=20260806.1"></script>
   </body>
 </html>

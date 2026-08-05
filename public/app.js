@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260728.2";
+const APP_VERSION = "20260806.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -100,8 +100,13 @@ const state = {
   liveLoadPromise: null,
   trashAlertTimers: new Map(),
   reservations: [],
+  monthReservations: [],
   announcements: [],
+  equipmentReports: [],
+  equipmentPhotoDataUrl: "",
+  usageStats: null,
   room: DEFAULT_ROOM,
+  calendarView: "week",
   mobileScheduleMode: "today",
   messaging: null,
   pushToken: "",
@@ -232,6 +237,27 @@ function addDays(dateText, amount) {
   return date.toISOString().slice(0, 10);
 }
 
+function monthForDate(dateText) {
+  return String(dateText || todayInSeoul()).slice(0, 7);
+}
+
+function monthRange(month = elements.calendarMonth?.value || monthForDate(todayInSeoul())) {
+  const [year, monthNumber] = String(month).split("-").map(Number);
+  const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${pad(days)}`, days };
+}
+
+function shiftMonth(month, amount) {
+  const [year, monthNumber] = String(month).split("-").map(Number);
+  const value = new Date(Date.UTC(year, monthNumber - 1 + amount, 1));
+  return `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}`;
+}
+
+function humanMonth(month) {
+  const [year, monthNumber] = String(month).split("-").map(Number);
+  return `${year}년 ${monthNumber}월`;
+}
+
 function humanDate(dateText, withDay = false) {
   const date = new Date(`${dateText}T00:00:00+09:00`);
   return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", ...(withDay ? { weekday: "short" } : {}) }).format(date);
@@ -278,6 +304,17 @@ function renderReservationTrashPreview() {
   elements.reservationTrashPreview.innerHTML = trashCompactMarkup(dateText);
 }
 
+function renderRepeatReservationUi() {
+  if (!elements.repeatReservation || !elements.repeatWeeksField) return;
+  const enabled = elements.repeatReservation.checked;
+  elements.repeatWeeksField.classList.toggle("hidden", !enabled);
+  elements.repeatReservationSummary.classList.toggle("hidden", !enabled);
+  if (!enabled) return;
+  const repeatWeeks = Number(elements.repeatWeeks.value || 4);
+  const firstDate = elements.reservationDate.value || todayInSeoul();
+  const lastDate = addDays(firstDate, (repeatWeeks - 1) * 7);
+  elements.repeatReservationSummary.textContent = `${humanDate(firstDate, true)}부터 ${humanDate(lastDate, true)}까지 매주 · 총 ${repeatWeeks}회`;
+}
 function showTrashNotice(dateText, reservation = null, reminder = false) {
   const schedule = trashScheduleForDate(dateText);
   elements.trashNoticeDialogTitle.textContent = reminder ? `합주 종료 ${TRASH_REMINDER_MINUTES}분 전` : "예약 완료 · 쓰레기 안내";
@@ -731,6 +768,20 @@ async function loadPublicReservations() {
     showToast("예약 현황을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.", true);
   }
 }
+async function loadMonthReservations() {
+  if (configMissing || !elements.calendarMonth) return;
+  const range = monthRange();
+  elements.monthCalendar.innerHTML = '<p class="month-loading">월간 예약을 불러오는 중입니다.</p>';
+  try {
+    const result = await call("listPublicReservations", range);
+    state.monthReservations = Array.isArray(result.data?.reservations) ? result.data.reservations : [];
+    renderMonthCalendar();
+  } catch (error) {
+    state.monthReservations = [];
+    renderMonthCalendar();
+    showToast("월간 예약을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.", true);
+  }
+}
 function selectedLogoBand() {
   return state.bands.find((band) => band.id === elements.logoBand.value);
 }
@@ -784,7 +835,7 @@ function renderMobileScheduleList() {
           <span class="mobile-schedule-time">${pad(reservation.startHour)}:00<br>— ${pad(reservation.endHour)}:00</span>
           <span class="mobile-schedule-band">
             ${isLive ? '<span class="mobile-live-label">NOW PLAYING</span>' : ""}
-            <strong>${escapeHtml(reservation.bandName)}</strong>
+            <strong>${reservation.repeatCount > 1 ? "↻ " : ""}${escapeHtml(reservation.bandName)}</strong>
             <span>${escapeHtml(trash.title)}</span>
           </span>
         </button>`;
@@ -837,7 +888,7 @@ function renderCalendar() {
         continue;
       }
       const firstSlot = reservation.startHour === hour;
-      const label = firstSlot ? `<span>${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00</span>${escapeHtml(reservation.bandName)}` : "";
+      const label = firstSlot ? `<span>${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00</span>${reservation.repeatCount > 1 ? "↻ " : ""}${escapeHtml(reservation.bandName)}` : "";
       slots.push(`<div class="calendar-slot"><button class="calendar-booking" data-reservation-id="${reservation.id}" style="border-left-color:${escapeHtml(reservation.bandColor || "#C8F063")}">${label}</button></div>`);
     }
   }
@@ -845,6 +896,50 @@ function renderCalendar() {
   renderMobileScheduleList();
 }
 
+function renderMonthCalendar() {
+  if (!elements.monthCalendar || !elements.calendarMonth) return;
+  const month = elements.calendarMonth.value || monthForDate(todayInSeoul());
+  const range = monthRange(month);
+  const firstWeekday = new Date(`${range.from}T12:00:00+09:00`).getUTCDay();
+  const cells = Array.from({ length: firstWeekday }, () => "");
+  for (let day = 1; day <= range.days; day += 1) cells.push(`${month}-${pad(day)}`);
+  while (cells.length % 7) cells.push("");
+  elements.monthCalendar.innerHTML = cells.map((dateText) => {
+    if (!dateText) return '<div class="month-day is-outside" aria-hidden="true"></div>';
+    const dayReservations = state.monthReservations
+      .filter((reservation) => reservation.date === dateText)
+      .sort((a, b) => Number(a.startHour) - Number(b.startHour));
+    const visible = dayReservations.slice(0, 3).map((reservation) => `
+      <button class="month-booking" type="button" data-reservation-id="${reservation.id}" style="--reservation-color:${escapeHtml(reservation.bandColor || "#52c8d0")}" title="${escapeHtml(`${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00 ${reservation.bandName}`)}">
+        <span>${pad(reservation.startHour)}:00</span><strong>${reservation.repeatCount > 1 ? "↻ " : ""}${escapeHtml(reservation.bandName)}</strong>
+      </button>`).join("");
+    const more = dayReservations.length > 3 ? `<span class="month-more">+${dayReservations.length - 3}건</span>` : "";
+    return `
+      <article class="month-day ${dateText === todayInSeoul() ? "is-today" : ""} ${dayReservations.length ? "has-booking" : ""}">
+        <time datetime="${dateText}">${Number(dateText.slice(-2))}</time>
+        <div class="month-day-bookings">${visible}${more}</div>
+      </article>`;
+  }).join("");
+}
+
+async function setScheduleView(view) {
+  state.calendarView = view === "month" ? "month" : "week";
+  const isMonth = state.calendarView === "month";
+  elements.weeklyScheduleView.classList.toggle("hidden", isMonth);
+  elements.monthlyScheduleView.classList.toggle("hidden", !isMonth);
+  elements.weekPicker.classList.toggle("hidden", isMonth);
+  elements.monthPicker.classList.toggle("hidden", !isMonth);
+  elements.weeklyViewButton.classList.toggle("is-active", !isMonth);
+  elements.monthlyViewButton.classList.toggle("is-active", isMonth);
+  elements.weeklyViewButton.setAttribute("aria-selected", String(!isMonth));
+  elements.monthlyViewButton.setAttribute("aria-selected", String(isMonth));
+  if (isMonth) await loadMonthReservations();
+}
+
+async function changeCalendarMonth(amount) {
+  elements.calendarMonth.value = shiftMonth(elements.calendarMonth.value || monthForDate(todayInSeoul()), amount);
+  await loadMonthReservations();
+}
 function renderMyReservations() {
   if (!state.profile) return;
   const reservations = state.reservations.filter((reservation) => state.profile.role === "main_admin" || reservation.bandId === state.profile.bandId);
@@ -853,8 +948,8 @@ function renderMyReservations() {
     const trashSchedule = trashScheduleForDate(reservation.date);
     return `
     <article class="my-reservation" style="--reservation-color:${escapeHtml(reservation.bandColor || "#7957E8")}">
-      <strong>${escapeHtml(reservation.bandName)}</strong>
-      <p>${humanDate(reservation.date, true)} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00</p>
+      <strong>${escapeHtml(reservation.bandName)}${reservation.repeatCount > 1 ? ' <span class="repeat-badge">매주 반복</span>' : ""}</strong>
+      <p>${humanDate(reservation.date, true)} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00${reservation.repeatCount > 1 ? ` · ${reservation.repeatIndex + 1}/${reservation.repeatCount}회` : ""}</p>
       <p class="my-reservation-trash">${escapeHtml(trashSchedule.day)} 쓰레기 · ${escapeHtml(trashSchedule.title)}</p>
       <button class="cancel-button" data-cancel-reservation="${reservation.id}">예약 취소</button>
     </article>`;
@@ -943,6 +1038,7 @@ async function refreshProfile() {
 function subscribeToPublicData() {
   loadBandDirectory();
   loadPublicReservations();
+  loadMonthReservations();
   onSnapshot(query(collection(db, "announcements"), where("active", "==", true), orderBy("publishedAt", "desc")), (snapshot) => {
     state.announcements = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
     renderNotices();
@@ -974,10 +1070,10 @@ function openReservationEntry() {
   elements.memberArea.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function showReservation(id) {
-  const reservation = state.reservations.find((item) => item.id === id);
+  const reservation = [...state.reservations, ...state.monthReservations].find((item) => item.id === id);
   if (!reservation) return;
   elements.reservationDialogTitle.textContent = reservation.bandName;
-  elements.reservationDialogInfo.textContent = `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00부터 ${pad(reservation.endHour)}:00까지 예약되어 있습니다.`;
+  elements.reservationDialogInfo.textContent = `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00부터 ${pad(reservation.endHour)}:00까지 예약되어 있습니다.${reservation.repeatCount > 1 ? ` · 매주 반복 ${reservation.repeatIndex + 1}/${reservation.repeatCount}` : ""}`;
   elements.reservationDialogTrash.innerHTML = trashCompactMarkup(reservation.date);
   elements.reservationDialog.showModal();
 }
@@ -1018,12 +1114,14 @@ async function handleReservation(event) {
   const startHour = Number(elements.startHour.value);
   const endHour = Number(elements.endHour.value);
   const bandId = state.profile.role === "main_admin" ? elements.reservationBand.value : state.profile.bandId;
+  const repeatWeeks = elements.repeatReservation.checked ? Number(elements.repeatWeeks.value) : 1;
   if (endHour <= startHour) return showToast("종료 시간은 시작 시간보다 뒤여야 합니다.", true);
   try {
     const result = await call("createReservation", {
       date,
       startHour,
       endHour,
+      repeatWeeks,
       ...(state.profile.role === "main_admin" ? { bandId } : {}),
     });
     const band = state.bands.find((item) => item.id === bandId);
@@ -1038,7 +1136,8 @@ async function handleReservation(event) {
     };
     showTrashNotice(date, createdReservation, false);
     scheduleTrashReminder(createdReservation);
-    showToast("예약이 완료되었습니다. 해당 요일의 쓰레기 배출 안내를 확인해 주세요.");
+await loadMonthReservations();
+    showToast(repeatWeeks > 1 ? `매주 같은 시간으로 ${repeatWeeks}회 예약했습니다.` : "예약이 완료되었습니다. 해당 요일의 쓰레기 배출 안내를 확인해 주세요.");
   } catch (error) {
     showToast(errorMessage(error), true);
   }
@@ -1321,6 +1420,163 @@ async function handleSettings(event) {
 }
 
 
+const EQUIPMENT_STATUS_LABELS = {
+  reported: "점검 필요",
+  checking: "점검 중",
+  repairing: "수리 중",
+  resolved: "사용 가능",
+};
+
+async function prepareEquipmentPhoto(file) {
+  if (!file) return "";
+  if (!file.type.startsWith("image/")) throw new Error("이미지 파일을 선택해 주세요.");
+  if (file.size > 6 * 1024 * 1024) throw new Error("장비 사진은 6MB 이하로 선택해 주세요.");
+  const image = await loadLogoImage(file);
+  let result = drawLogoDataUrl(image, 1100, "image/webp", 0.78);
+  if (result.length > 210000) result = drawLogoDataUrl(image, 900, "image/webp", 0.68);
+  if (result.length > 210000) result = drawLogoDataUrl(image, 720, "image/jpeg", 0.65, "#ffffff");
+  if (result.length > 210000) result = drawLogoDataUrl(image, 560, "image/jpeg", 0.58, "#ffffff");
+  if (result.length > 210000) throw new Error("사진 용량을 줄일 수 없습니다. 더 작은 사진을 선택해 주세요.");
+  return result;
+}
+
+function renderEquipmentPhotoPreview() {
+  if (!state.equipmentPhotoDataUrl) {
+    elements.equipmentPhotoPreview.classList.add("hidden");
+    elements.equipmentPhotoPreview.innerHTML = "";
+    return;
+  }
+  elements.equipmentPhotoPreview.innerHTML = `<img src="${state.equipmentPhotoDataUrl}" alt="신고할 장비 사진 미리보기" /><button id="removeEquipmentPhotoButton" class="text-button" type="button">사진 빼기</button>`;
+  elements.equipmentPhotoPreview.classList.remove("hidden");
+}
+
+async function handleEquipmentPhoto(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+  try {
+    state.equipmentPhotoDataUrl = await prepareEquipmentPhoto(file);
+    renderEquipmentPhotoPreview();
+    showToast("장비 사진을 준비했습니다.");
+  } catch (error) {
+    state.equipmentPhotoDataUrl = "";
+    event.target.value = "";
+    renderEquipmentPhotoPreview();
+    showToast(errorMessage(error), true);
+  }
+}
+
+function equipmentReportDate(millis) {
+  if (!millis) return "방금 전";
+  return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(millis));
+}
+
+function equipmentStatusOptions(selected) {
+  return Object.entries(EQUIPMENT_STATUS_LABELS).map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
+}
+
+function renderEquipmentReports() {
+  if (!elements.equipmentReportList) return;
+  const openReports = state.equipmentReports.filter((report) => report.status !== "resolved");
+  elements.equipmentOpenCount.textContent = openReports.length ? `확인할 장비 ${openReports.length}건` : "모든 장비 사용 가능";
+  elements.equipmentReportList.innerHTML = state.equipmentReports.length ? state.equipmentReports.map((report) => `
+    <article class="equipment-report status-${report.status}">
+      <div class="equipment-report-top">
+        <span class="equipment-status">${escapeHtml(EQUIPMENT_STATUS_LABELS[report.status] || EQUIPMENT_STATUS_LABELS.reported)}</span>
+        <time>${escapeHtml(equipmentReportDate(report.createdAtMillis))}</time>
+      </div>
+      ${report.photoDataUrl ? `<button class="equipment-photo-button" type="button" data-equipment-photo="${report.id}" aria-label="${escapeHtml(report.equipmentName)} 사진 크게 보기"><img src="${report.photoDataUrl}" alt="${escapeHtml(report.equipmentName)} 신고 사진" loading="lazy" /></button>` : ""}
+      <div class="equipment-report-copy">
+        <h3>${escapeHtml(report.equipmentName)}</h3>
+        <p>${escapeHtml(report.description)}</p>
+        <small>${escapeHtml(report.bandName)} · ${escapeHtml(report.reporterName)}</small>
+      </div>
+      ${state.profile?.role === "main_admin" ? `<label class="equipment-status-control">처리 상태<select data-equipment-status="${report.id}">${equipmentStatusOptions(report.status)}</select></label>` : ""}
+    </article>`).join("") : '<p class="empty-message">신고된 장비 문제가 없습니다.</p>';
+}
+
+async function loadEquipmentReports() {
+  if (!state.profile) return;
+  elements.equipmentReportList.innerHTML = '<p class="empty-message">장비 상태를 불러오는 중입니다.</p>';
+  try {
+    const result = await call("listEquipmentReports");
+    state.equipmentReports = Array.isArray(result.data?.reports) ? result.data.reports : [];
+    renderEquipmentReports();
+  } catch (error) {
+    elements.equipmentReportList.innerHTML = '<p class="empty-message">장비 상태를 불러올 수 없습니다.</p>';
+    showToast(errorMessage(error), true);
+  }
+}
+
+async function handleEquipmentReport(event) {
+  event.preventDefault();
+  try {
+    await call("createEquipmentReport", {
+      equipmentName: elements.equipmentName.value.trim(),
+      description: elements.equipmentDescription.value.trim(),
+      photoDataUrl: state.equipmentPhotoDataUrl,
+    });
+    elements.equipmentReportForm.reset();
+    state.equipmentPhotoDataUrl = "";
+    renderEquipmentPhotoPreview();
+    await loadEquipmentReports();
+    showToast("장비 이상을 등록했습니다. 메인 관리자에게 상태가 공유됩니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  }
+}
+
+async function updateEquipmentStatus(reportId, status) {
+  try {
+    await call("updateEquipmentReportStatus", { reportId, status });
+    const report = state.equipmentReports.find((item) => item.id === reportId);
+    if (report) report.status = status;
+    renderEquipmentReports();
+    showToast(`장비 상태를 ‘${EQUIPMENT_STATUS_LABELS[status]}’으로 변경했습니다.`);
+  } catch (error) {
+    showToast(errorMessage(error), true);
+    await loadEquipmentReports();
+  }
+}
+
+function renderUsageStats() {
+  if (!elements.usageStatsSummary || state.profile?.role !== "main_admin") return;
+  const stats = state.usageStats;
+  if (!stats) {
+    elements.usageStatsSummary.innerHTML = '<p class="empty-message">통계를 불러오는 중입니다.</p>';
+    return;
+  }
+  const summary = stats.summary || {};
+  elements.usageStatsSummary.innerHTML = `
+    <article><span>총 이용시간</span><strong>${Number(summary.totalHours || 0)}<small>시간</small></strong></article>
+    <article><span>예약</span><strong>${Number(summary.totalReservations || 0)}<small>건</small></strong></article>
+    <article><span>이용일</span><strong>${Number(summary.usedDays || 0)}<small>일</small></strong></article>
+    <article><span>가동률</span><strong>${Number(summary.utilizationRate || 0)}<small>%</small></strong></article>
+    <article><span>취소</span><strong>${Number(summary.cancellations || 0)}<small>건</small></strong></article>`;
+  const bands = Array.isArray(stats.bands) ? stats.bands : [];
+  const maxHours = Math.max(1, ...bands.map((band) => Number(band.hours || 0)));
+  elements.bandUsageChart.innerHTML = bands.length ? bands.map((band) => `
+    <div class="usage-row">
+      <div><strong>${escapeHtml(band.bandName)}</strong><span>${Number(band.hours || 0)}시간 · ${Number(band.reservations || 0)}건${band.cancellations ? ` · 취소 ${band.cancellations}` : ""}</span></div>
+      <div class="usage-track"><i style="width:${Math.max(3, Math.round((Number(band.hours || 0) / maxHours) * 100))}%;--band-color:${escapeHtml(band.color || "#7650b4")}"></i></div>
+    </div>`).join("") : '<p class="empty-message">이 달에는 이용 기록이 없습니다.</p>';
+  const popular = Array.isArray(stats.popularHours) ? stats.popularHours : [];
+  elements.popularHoursList.innerHTML = popular.length ? popular.map((item, index) => `
+    <div class="popular-hour"><span>${index + 1}</span><strong>${pad(item.hour)}:00–${pad(Number(item.hour) + 1)}:00</strong><small>${Number(item.count || 0)}시간 예약</small></div>`).join("") : '<p class="empty-message">인기 시간대를 계산할 예약이 없습니다.</p>';
+}
+
+async function loadMonthlyUsageStats() {
+  if (state.profile?.role !== "main_admin") return;
+  state.usageStats = null;
+  renderUsageStats();
+  try {
+    const result = await call("getMonthlyUsageStats", { month: elements.statsMonth.value || monthForDate(todayInSeoul()) });
+    state.usageStats = result.data || null;
+    renderUsageStats();
+  } catch (error) {
+    elements.usageStatsSummary.innerHTML = '<p class="empty-message">이용 통계를 불러올 수 없습니다.</p>';
+    showToast(errorMessage(error), true);
+  }
+}
 function bindEvents() {
   elements.openAuthButton.addEventListener("click", openAuth);
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
@@ -1361,12 +1617,39 @@ function bindEvents() {
   elements.mobileTodayButton.addEventListener("click", () => setMobileScheduleMode("today"));
   elements.mobileWeekButton.addEventListener("click", () => setMobileScheduleMode("week"));
   elements.mobileTableToggle.addEventListener("click", toggleMobileTable);
+  elements.weeklyViewButton.addEventListener("click", () => setScheduleView("week"));
+  elements.monthlyViewButton.addEventListener("click", () => setScheduleView("month"));
+  elements.previousMonthButton.addEventListener("click", () => changeCalendarMonth(-1));
+  elements.nextMonthButton.addEventListener("click", () => changeCalendarMonth(1));
+  elements.calendarMonth.addEventListener("change", loadMonthReservations);
   elements.weekStart.addEventListener("change", () => {
     state.mobileScheduleMode = "week";
     if (state.profile) subscribeToAppData(); else loadPublicReservations();
     renderCalendar();
   });
-  elements.reservationDate.addEventListener("change", renderReservationTrashPreview);
+  elements.reservationDate.addEventListener("change", () => { renderReservationTrashPreview(); renderRepeatReservationUi(); });
+  elements.repeatReservation.addEventListener("change", renderRepeatReservationUi);
+  elements.repeatWeeks.addEventListener("change", renderRepeatReservationUi);
+  elements.equipmentReportForm.addEventListener("submit", handleEquipmentReport);
+  elements.equipmentPhoto.addEventListener("change", handleEquipmentPhoto);
+  elements.refreshEquipmentButton.addEventListener("click", loadEquipmentReports);
+  elements.equipmentPhotoPreview.addEventListener("click", (event) => {
+    if (event.target.id !== "removeEquipmentPhotoButton") return;
+    state.equipmentPhotoDataUrl = "";
+    elements.equipmentPhoto.value = "";
+    renderEquipmentPhotoPreview();
+  });
+  elements.equipmentReportList.addEventListener("change", (event) => {
+    const reportId = event.target.dataset.equipmentStatus;
+    if (reportId) updateEquipmentStatus(reportId, event.target.value);
+  });
+  elements.equipmentReportList.addEventListener("click", (event) => {
+    const reportId = event.target.closest("[data-equipment-photo]")?.dataset.equipmentPhoto;
+    if (!reportId) return;
+    const report = state.equipmentReports.find((item) => item.id === reportId);
+    if (report?.photoDataUrl) window.open(report.photoDataUrl, "_blank", "noopener,noreferrer");
+  });
+  elements.statsMonth.addEventListener("change", loadMonthlyUsageStats);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleTrashAlerts(); });
   elements.startHour.addEventListener("change", () => {
     if (Number(elements.endHour.value) <= Number(elements.startHour.value)) elements.endHour.value = String(Number(elements.startHour.value) + 1);
@@ -1388,10 +1671,14 @@ function bindEvents() {
     const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
     if (id) showReservation(id);
   });
+  elements.monthCalendar.addEventListener("click", (event) => {
+    const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
+    if (id) showReservation(id);
+  });
   elements.myReservationList.addEventListener("click", async (event) => {
     const id = event.target.dataset.cancelReservation;
     if (!id || !window.confirm("이 예약을 취소할까요?")) return;
-    try { await call("cancelReservation", { reservationId: id }); showToast("예약을 취소했습니다."); } catch (error) { showToast(errorMessage(error), true); }
+    try { await call("cancelReservation", { reservationId: id }); await loadMonthReservations(); showToast("예약을 취소했습니다."); } catch (error) { showToast(errorMessage(error), true); }
   });
 }
 
@@ -1411,10 +1698,14 @@ function initialise() {
   if (rememberedLoginId && elements.activationLoginId) elements.activationLoginId.value = rememberedLoginId;
   const today = todayInSeoul();
   elements.weekStart.value = today;
+  elements.calendarMonth.value = monthForDate(today);
+  elements.statsMonth.value = monthForDate(today);
   elements.reservationDate.value = today;
   elements.reservationDate.min = today;
   renderTrashSchedule();
   renderReservationTrashPreview();
+  renderRepeatReservationUi();
+  renderMonthCalendar();
   updateTrashNotificationUi();
   applyRoomToControls();
   bindEvents();
@@ -1438,11 +1729,18 @@ function initialise() {
     updateTrashNotificationUi();
     if (state.profile) {
       subscribeToAppData();
-      await syncPushSubscription({ silent: true });
+      await Promise.all([
+        syncPushSubscription({ silent: true }),
+        loadEquipmentReports(),
+        state.profile.role === "main_admin" ? loadMonthlyUsageStats() : Promise.resolve(),
+      ]);
     } else {
       state.pushToken = "";
+      state.equipmentReports = [];
+      state.usageStats = null;
       clearAppSubscriptions();
       loadPublicReservations();
+      loadMonthReservations();
     }
   });
 }

@@ -22,6 +22,9 @@ const MAX_LOGO_ORIGINAL_DATA_URL_LENGTH = 780000;
 const MAX_LOGO_THUMBNAIL_DATA_URL_LENGTH = 90000;
 const LOGO_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const PUSH_TOKEN_PATTERN = /^[A-Za-z0-9_:.-]{20,4096}$/;
+const EQUIPMENT_PHOTO_DATA_URL_PATTERN = /^data:image\/(?:jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_EQUIPMENT_PHOTO_DATA_URL_LENGTH = 240000;
+const EQUIPMENT_REPORT_STATUSES = new Set(["reported", "checking", "repairing", "resolved"]);
 const INVALID_PUSH_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
   "messaging/registration-token-not-registered",
@@ -108,6 +111,21 @@ function parseReservationDate(date, hour) {
     badRequest("날짜 또는 시간을 확인해 주세요.");
   }
   return value;
+}
+
+function addDaysToDateText(dateText, amount) {
+  const value = new Date(`${dateText}T12:00:00+09:00`);
+  value.setUTCDate(value.getUTCDate() + amount);
+  return value.toISOString().slice(0, 10);
+}
+
+function validateMonthInput(value) {
+  const month = String(value || "");
+  if (!/^\d{4}-\d{2}$/.test(month)) badRequest("조회할 달을 확인해 주세요.");
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (year < 2020 || year > 2100 || monthNumber < 1 || monthNumber > 12) badRequest("조회할 달을 확인해 주세요.");
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return { month, from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, "0")}`, days: lastDay };
 }
 
 function slotId(date, hour) {
@@ -433,6 +451,9 @@ exports.listPublicReservations = onCall(async (request) => {
       startHour: Number(reservation.startHour),
       endHour: Number(reservation.endHour),
       status: "confirmed",
+      repeatGroupId: String(reservation.repeatGroupId || ""),
+      repeatIndex: Number(reservation.repeatIndex || 0),
+      repeatCount: Number(reservation.repeatCount || 1),
     };
   });
   return { reservations };
@@ -633,6 +654,138 @@ exports.unregisterPushToken = onCall(async (request) => {
   return { removed: true };
 });
 
+exports.listEquipmentReports = onCall(async (request) => {
+  const auth = requireAuth(request);
+  await getProfile(auth.uid);
+  const snapshot = await db.collection("equipmentReports")
+    .orderBy("createdAt", "desc")
+    .limit(30)
+    .get();
+  return {
+    reports: snapshot.docs.map((item) => {
+      const report = item.data();
+      return {
+        id: item.id,
+        equipmentName: String(report.equipmentName || "").slice(0, 60),
+        description: String(report.description || "").slice(0, 600),
+        photoDataUrl: String(report.photoDataUrl || ""),
+        status: EQUIPMENT_REPORT_STATUSES.has(report.status) ? report.status : "reported",
+        reporterName: String(report.reporterName || "").slice(0, 40),
+        bandName: String(report.bandName || "").slice(0, 40),
+        createdAtMillis: report.createdAt?.toMillis?.() || 0,
+        updatedAtMillis: report.updatedAt?.toMillis?.() || 0,
+      };
+    }),
+  };
+});
+
+exports.createEquipmentReport = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const profile = await getProfile(auth.uid);
+  const equipmentName = String(request.data?.equipmentName || "").trim();
+  const description = String(request.data?.description || "").trim();
+  const photoDataUrl = String(request.data?.photoDataUrl || "").trim();
+  if (equipmentName.length < 2 || equipmentName.length > 60) badRequest("장비 이름을 2~60자로 입력해 주세요.");
+  if (description.length < 2 || description.length > 600) badRequest("이상 내용을 2~600자로 입력해 주세요.");
+  if (photoDataUrl && (!EQUIPMENT_PHOTO_DATA_URL_PATTERN.test(photoDataUrl) || photoDataUrl.length > MAX_EQUIPMENT_PHOTO_DATA_URL_LENGTH)) {
+    badRequest("장비 사진을 다시 선택해 주세요.");
+  }
+  let bandName = "메인 관리자";
+  if (profile.bandId) {
+    const bandSnapshot = await db.collection("bands").doc(profile.bandId).get();
+    bandName = String(bandSnapshot.data()?.name || "등록 밴드");
+  }
+  const reference = db.collection("equipmentReports").doc();
+  await reference.set({
+    equipmentName,
+    description,
+    photoDataUrl,
+    status: "reported",
+    reporterUid: auth.uid,
+    reporterName: String(profile.displayName || "사용자").slice(0, 40),
+    bandId: String(profile.bandId || ""),
+    bandName: bandName.slice(0, 40),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { reportId: reference.id };
+});
+
+exports.updateEquipmentReportStatus = onCall(async (request) => {
+  const { auth } = await requireMainAdmin(request);
+  const reportId = String(request.data?.reportId || "").trim();
+  const status = String(request.data?.status || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(reportId) || !EQUIPMENT_REPORT_STATUSES.has(status)) {
+    badRequest("장비 신고 상태를 확인해 주세요.");
+  }
+  const reference = db.collection("equipmentReports").doc(reportId);
+  const snapshot = await reference.get();
+  if (!snapshot.exists) throw new HttpsError("not-found", "장비 신고를 찾을 수 없습니다.");
+  await reference.update({
+    status,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: auth.uid,
+    ...(status === "resolved" ? { resolvedAt: FieldValue.serverTimestamp() } : { resolvedAt: FieldValue.delete() }),
+  });
+  return { updated: true };
+});
+
+exports.getMonthlyUsageStats = onCall(async (request) => {
+  await requireMainAdmin(request);
+  const range = validateMonthInput(request.data?.month);
+  const [reservationSnapshot, bandSnapshot, roomSnapshot] = await Promise.all([
+    db.collection("reservations").where("date", ">=", range.from).where("date", "<=", range.to).orderBy("date").get(),
+    db.collection("bands").get(),
+    db.collection("settings").doc("room").get(),
+  ]);
+  const room = roomSnapshot.exists ? { ...DEFAULT_ROOM_SETTINGS, ...roomSnapshot.data() } : DEFAULT_ROOM_SETTINGS;
+  const byBand = new Map();
+  bandSnapshot.docs.forEach((item) => {
+    const band = item.data();
+    byBand.set(item.id, { bandId: item.id, bandName: String(band.name || "등록 밴드"), color: String(band.color || "#8B5CF6"), hours: 0, reservations: 0, cancellations: 0 });
+  });
+  const hours = new Map();
+  let totalHours = 0;
+  let totalReservations = 0;
+  let cancellations = 0;
+  const usedDates = new Set();
+  reservationSnapshot.docs.forEach((item) => {
+    const reservation = item.data();
+    const bandId = String(reservation.bandId || "unknown");
+    if (!byBand.has(bandId)) byBand.set(bandId, { bandId, bandName: String(reservation.bandName || "이전 밴드"), color: String(reservation.bandColor || "#8B5CF6"), hours: 0, reservations: 0, cancellations: 0 });
+    const band = byBand.get(bandId);
+    if (reservation.status === "cancelled") {
+      cancellations += 1;
+      band.cancellations += 1;
+      return;
+    }
+    if (reservation.status !== "confirmed") return;
+    const duration = Math.max(0, Number(reservation.endHour) - Number(reservation.startHour));
+    totalHours += duration;
+    totalReservations += 1;
+    usedDates.add(String(reservation.date || ""));
+    band.hours += duration;
+    band.reservations += 1;
+    for (let hour = Number(reservation.startHour); hour < Number(reservation.endHour); hour += 1) hours.set(hour, (hours.get(hour) || 0) + 1);
+  });
+  const availableHours = range.days * Math.max(0, Number(room.closeHour) - Number(room.openHour));
+  const popularHours = [...hours.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .slice(0, 3)
+    .map(([hour, count]) => ({ hour, count }));
+  return {
+    month: range.month,
+    summary: {
+      totalHours,
+      totalReservations,
+      cancellations,
+      usedDays: usedDates.size,
+      utilizationRate: availableHours ? Math.round((totalHours / availableHours) * 1000) / 10 : 0,
+    },
+    bands: [...byBand.values()].filter((band) => band.hours || band.reservations || band.cancellations).sort((a, b) => b.hours - a.hours || a.bandName.localeCompare(b.bandName, "ko")),
+    popularHours,
+  };
+});
 exports.createReservation = onCall(async (request) => {
   const auth = requireAuth(request);
   const profile = await getProfile(auth.uid);
@@ -645,11 +798,13 @@ exports.createReservation = onCall(async (request) => {
     throw new HttpsError("permission-denied", "예약 권한이 없습니다.");
   }
 
+  const repeatWeeks = Number(request.data?.repeatWeeks || 1);
+  if (!Number.isInteger(repeatWeeks) || repeatWeeks < 1 || repeatWeeks > 12) badRequest("반복 예약은 최대 12주까지 가능합니다.");
+  const dates = Array.from({ length: repeatWeeks }, (_, index) => addDaysToDateText(date, index * 7));
   const bandRef = db.collection("bands").doc(bandId);
-  const reservationRef = db.collection("reservations").doc();
+  const reservationRefs = dates.map(() => db.collection("reservations").doc());
+  const repeatGroupId = repeatWeeks > 1 ? crypto.randomUUID() : "";
   let reservationBandName = "";
-  const startAt = Timestamp.fromDate(parseReservationDate(date, startHour));
-  const endAt = Timestamp.fromDate(parseReservationDate(date, endHour));
   const slots = Array.from({ length: endHour - startHour }, (_, index) => startHour + index);
 
   await db.runTransaction(async (transaction) => {
@@ -663,51 +818,60 @@ exports.createReservation = onCall(async (request) => {
       throw new HttpsError("failed-precondition", "운영 시간 안에서 한 시간 단위로 예약해 주세요.");
     }
 
-    const slotRefs = slots.map((hour) => db.collection("scheduleSlots").doc(slotId(date, hour)));
-    const occupiedSlots = await Promise.all(slotRefs.map((reference) => transaction.get(reference)));
-    if (occupiedSlots.some((snapshot) => snapshot.exists)) {
-      throw new HttpsError("already-exists", "선택한 시간에 이미 다른 예약이 있습니다.");
+    const slotEntries = dates.flatMap((reservationDate, repeatIndex) => slots.map((hour) => ({
+      date: reservationDate,
+      hour,
+      repeatIndex,
+      reference: db.collection("scheduleSlots").doc(slotId(reservationDate, hour)),
+    })));
+    const occupiedSlots = await transaction.getAll(...slotEntries.map((entry) => entry.reference));
+    const occupiedDates = [...new Set(occupiedSlots.map((snapshot, index) => snapshot.exists ? slotEntries[index].date : "").filter(Boolean))];
+    if (occupiedDates.length) {
+      throw new HttpsError("already-exists", `${occupiedDates.map(reservationDateLabel).join(", ")}에 이미 다른 예약이 있습니다. 반복 예약 전체가 저장되지 않았습니다.`);
     }
 
     const bandData = band.data();
     reservationBandName = String(bandData.name || "예약 밴드");
-    transaction.set(reservationRef, {
-      bandId,
-      bandName: bandData.name,
-      bandColor: bandData.color || "#8B5CF6",
-      date,
-      startHour,
-      endHour,
-      startAt,
-      endAt,
-      status: "confirmed",
-      createdBy: auth.uid,
-      createdByName: profile.displayName,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    for (let index = 0; index < slotRefs.length; index += 1) {
-      transaction.set(slotRefs[index], {
-        reservationId: reservationRef.id,
-        date,
-        hour: slots[index],
+    dates.forEach((reservationDate, repeatIndex) => {
+      transaction.set(reservationRefs[repeatIndex], {
         bandId,
+        bandName: bandData.name,
+        bandColor: bandData.color || "#8B5CF6",
+        date: reservationDate,
+        startHour,
+        endHour,
+        startAt: Timestamp.fromDate(parseReservationDate(reservationDate, startHour)),
+        endAt: Timestamp.fromDate(parseReservationDate(reservationDate, endHour)),
+        status: "confirmed",
+        repeatGroupId,
+        repeatIndex,
+        repeatCount: repeatWeeks,
+        createdBy: auth.uid,
+        createdByName: profile.displayName,
         createdAt: FieldValue.serverTimestamp(),
       });
-    }
+    });
+    slotEntries.forEach((entry) => transaction.set(entry.reference, {
+      reservationId: reservationRefs[entry.repeatIndex].id,
+      date: entry.date,
+      hour: entry.hour,
+      bandId,
+      repeatGroupId,
+      createdAt: FieldValue.serverTimestamp(),
+    }));
   });
 
   await sendPushToBand(bandId, {
-    title: "합주실 예약 완료",
-    body: `${reservationBandName} · ${reservationDateLabel(date)} ${displayTime(startHour)}–${displayTime(endHour)} · ${trashTitleForDate(date)}`,
+    title: repeatWeeks > 1 ? `합주실 반복 예약 ${repeatWeeks}회 완료` : "합주실 예약 완료",
+    body: `${reservationBandName} · ${reservationDateLabel(date)}부터 ${repeatWeeks > 1 ? "매주 " : ""}${displayTime(startHour)}–${displayTime(endHour)}${repeatWeeks > 1 ? ` · ${repeatWeeks}주` : ` · ${trashTitleForDate(date)}`}`,
     kind: "reservation_created",
-    reservationId: reservationRef.id,
+    reservationId: reservationRefs[0].id,
     url: "./#schedule",
     urgent: true,
   }).catch((error) => console.error("Could not send reservation confirmation push", error));
 
-  return { reservationId: reservationRef.id };
+  return { reservationId: reservationRefs[0].id, reservationIds: reservationRefs.map((reference) => reference.id), repeatCount: repeatWeeks };
 });
-
 exports.cancelReservation = onCall(async (request) => {
   const auth = requireAuth(request);
   const profile = await getProfile(auth.uid);
