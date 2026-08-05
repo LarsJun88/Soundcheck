@@ -9,13 +9,13 @@ try {
 } catch (error) {
   messaging = null;
 }
-const SHELL_CACHE = "soundcheck-shell-v18";
+const SHELL_CACHE = "soundcheck-shell-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./rock-theme.css",
-  "./app.js?v=20260806.3",
+  "./app.js?v=20260806.4",
   "./firebase-config.js",
   "./firebase-sw-config.js",
   "./manifest.webmanifest",

@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.3";
+const APP_VERSION = "20260806.4";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -107,7 +107,7 @@ const state = {
   usageStats: null,
   room: DEFAULT_ROOM,
   activeTab: "home",
-  calendarView: "week",
+  calendarView: "month",
   mobileScheduleMode: "today",
   messaging: null,
   pushToken: "",

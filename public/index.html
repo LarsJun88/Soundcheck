@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260806.3" />
+    <meta name="soundcheck-version" content="20260806.4" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -104,21 +104,21 @@
             <div><p class="eyebrow">SHARED CALENDAR</p><h2>합주실 시간표</h2></div>
             <div class="schedule-controls">
               <div class="schedule-view-switch" role="tablist" aria-label="시간표 보기 방식">
-                <button id="weeklyViewButton" class="schedule-view-button is-active" type="button" role="tab" aria-selected="true">주간</button>
-                <button id="monthlyViewButton" class="schedule-view-button" type="button" role="tab" aria-selected="false">월간</button>
+                <button id="weeklyViewButton" class="schedule-view-button" type="button" role="tab" aria-selected="false">주간</button>
+                <button id="monthlyViewButton" class="schedule-view-button is-active" type="button" role="tab" aria-selected="true">월간</button>
               </div>
-              <div id="weekPicker" class="week-picker">
+              <div id="weekPicker" class="week-picker hidden">
                 <label for="weekStart">기준 날짜</label>
                 <input id="weekStart" type="date" />
               </div>
-              <div id="monthPicker" class="month-picker hidden">
+              <div id="monthPicker" class="month-picker">
                 <button id="previousMonthButton" type="button" aria-label="이전 달">‹</button>
                 <input id="calendarMonth" type="month" aria-label="조회할 달" />
                 <button id="nextMonthButton" type="button" aria-label="다음 달">›</button>
               </div>
             </div>
           </div>
-          <div id="weeklyScheduleView">
+          <div id="weeklyScheduleView" class="hidden">
             <div class="calendar-note"><span class="legend-free"></span> 비어 있는 시간 <span class="legend-booked"></span> 예약 완료 · 클릭하면 예약 상세를 볼 수 있습니다.</div>
             <div class="mobile-schedule" aria-labelledby="mobileScheduleTitle">
               <div class="mobile-schedule-head">
@@ -134,7 +134,7 @@
             </div>
             <div id="calendarWrap" class="calendar-wrap" aria-live="polite"></div>
           </div>
-          <div id="monthlyScheduleView" class="monthly-schedule-view hidden">
+          <div id="monthlyScheduleView" class="monthly-schedule-view">
             <div class="calendar-note">한 달의 예약을 한 화면에서 확인할 수 있습니다. 팀 이름을 누르면 상세 일정이 열립니다.</div>
             <div class="month-calendar-wrap">
               <div class="month-weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
@@ -361,6 +361,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260806.3"></script>
+    <script type="module" src="./app.js?v=20260806.4"></script>
   </body>
 </html>
