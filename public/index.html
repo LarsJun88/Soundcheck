@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260806.1" />
+    <meta name="soundcheck-version" content="20260806.2" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -36,13 +36,13 @@
     </header>
 
     <main id="top">
-      <section class="hero page-width">
+      <section class="hero page-width" data-tab-view="home">
         <div>
           <p class="eyebrow">ONE ROOM, GOOD TIME</p>
           <h1>깔룽살롱<br /><em>합주실</em></h1>
           <p class="hero-copy">밴드별로 예약하고, 모두가 한눈에 일정을 확인하는 합주실 스케줄러입니다.</p>
           <div class="hero-actions">
-            <a href="#schedule" class="button button-primary">이번 주 일정 보기 <span>↓</span></a>
+            <a href="#schedule" class="button button-primary" data-open-tab="schedule">이번 주 일정 보기 <span>↓</span></a>
             <button id="heroReservationButton" class="button button-ghost hero-reservation-button">합주실 예약하기</button>
           </div>
         </div>
@@ -53,7 +53,20 @@
         </aside>
       </section>
 
-      <section class="notices-section page-width" aria-labelledby="noticeTitle">
+      <section id="homeDashboard" class="home-dashboard page-width" data-tab-view="home" aria-label="빠른 메뉴">
+        <div class="home-notice-card">
+          <div class="home-card-heading"><span>LATEST NOTICE</span><button class="text-button" type="button" data-open-tab="menu">전체 공지</button></div>
+          <div id="homeNoticePreview"><p class="empty-message">최신 공지를 불러오는 중입니다.</p></div>
+        </div>
+        <div class="home-quick-grid" aria-label="주요 기능 바로가기">
+          <button type="button" data-open-tab="schedule"><span class="quick-icon">▦</span><strong>일정 보기</strong><small>주간·월간 시간표</small></button>
+          <button type="button" data-open-tab="reservation"><span class="quick-icon">＋</span><strong>예약하기</strong><small>새 예약과 내 예약</small></button>
+          <button type="button" data-open-tab="equipment"><span class="quick-icon">⚙</span><strong>장비 상태</strong><small>고장 신고와 처리 현황</small></button>
+          <button type="button" data-open-tab="menu"><span class="quick-icon">≡</span><strong>이용 안내</strong><small>공지·쓰레기·밴드</small></button>
+        </div>
+      </section>
+
+      <section class="notices-section page-width" data-tab-view="menu" hidden aria-labelledby="noticeTitle">
         <div class="section-heading">
           <div><p class="eyebrow">BEFORE YOU PLAY</p><h2 id="noticeTitle">공지사항</h2></div>
           <span class="notice-count" id="noticeCount">불러오는 중</span>
@@ -61,7 +74,7 @@
         <div id="noticeList" class="notice-list"><p class="empty-message">공지사항을 불러오는 중입니다.</p></div>
       </section>
 
-      <section id="trashSchedule" class="trash-section page-width" aria-labelledby="trashScheduleTitle">
+      <section id="trashSchedule" class="trash-section page-width" data-tab-view="menu" hidden aria-labelledby="trashScheduleTitle">
         <div class="section-heading trash-section-heading">
           <div><p class="eyebrow">CLEAN ROOM ROUTINE</p><h2 id="trashScheduleTitle">요일별 쓰레기 배출</h2></div>
           <button id="trashNotificationButton" class="button button-light" type="button">예약 푸시 알림 켜기</button>
@@ -71,7 +84,7 @@
         <p id="trashNotificationStatus" class="trash-notification-status"></p>
       </section>
 
-      <section class="bands-section page-width" aria-labelledby="bandDirectoryTitle">
+      <section class="bands-section page-width" data-tab-view="menu" hidden aria-labelledby="bandDirectoryTitle">
         <div class="section-heading">
           <div><p class="eyebrow">PLAYING TOGETHER</p><h2 id="bandDirectoryTitle">함께하는 밴드</h2></div>
           <span class="notice-count" id="bandCount">불러오는 중</span>
@@ -80,7 +93,7 @@
           <p class="empty-message">밴드 목록을 불러오는 중입니다.</p>
         </div>
       </section>
-      <section id="schedule" class="schedule-section">
+      <section id="schedule" class="schedule-section" data-tab-view="schedule" hidden>
         <div class="page-width">
           <div class="section-heading schedule-heading">
             <div><p class="eyebrow">SHARED CALENDAR</p><h2>합주실 시간표</h2></div>
@@ -126,7 +139,7 @@
         </div>
       </section>
       <div id="memberAreaAnchor" hidden></div>
-      <section id="memberArea" class="member-area page-width hidden" aria-label="예약 관리">
+      <section id="memberArea" class="member-area page-width hidden" data-tab-view="reservation" hidden aria-label="예약 관리">
         <div class="member-intro">
           <p class="eyebrow">MANAGER DESK</p>
           <h2>예약 관리</h2>
@@ -166,30 +179,37 @@
             <div id="myReservationList" class="my-reservation-list"><p class="empty-message">예정된 예약이 없습니다.</p></div>
           </div>
         </div>
-        <section class="equipment-area" aria-labelledby="equipmentTitle">
-          <div class="section-heading equipment-heading">
-            <div><p class="eyebrow">GEAR CHECK</p><h2 id="equipmentTitle">장비 이상 신고</h2></div>
-            <span id="equipmentOpenCount" class="notice-count">불러오는 중</span>
-          </div>
-          <div class="equipment-layout">
-            <form id="equipmentReportForm" class="panel equipment-report-form">
-              <div class="panel-heading"><h3>문제 알리기</h3><span>사진 선택</span></div>
-              <label>장비 이름<input id="equipmentName" maxlength="60" required placeholder="예: 기타 앰프 1번" /></label>
-              <label>이상 내용<textarea id="equipmentDescription" maxlength="600" required placeholder="증상과 확인한 내용을 자세히 적어 주세요."></textarea></label>
-              <label>사진 (선택)<input id="equipmentPhoto" type="file" accept="image/jpeg,image/png,image/webp" /></label>
-              <div id="equipmentPhotoPreview" class="equipment-photo-preview hidden"></div>
-              <button class="button button-primary form-submit" type="submit">장비 이상 신고하기</button>
-              <p class="form-help">사진은 전송 전에 자동으로 용량을 줄입니다.</p>
-            </form>
-            <div class="panel equipment-list-panel">
-              <div class="panel-heading"><h3>장비 상태</h3><button id="refreshEquipmentButton" class="text-button" type="button">새로고침</button></div>
-              <div id="equipmentReportList" class="equipment-report-list"><p class="empty-message">장비 상태를 불러오는 중입니다.</p></div>
-            </div>
-          </div>
-        </section>
+
       </section>
 
-      <section id="adminArea" class="admin-area page-width hidden" aria-label="메인 관리자 도구">
+      <section id="reservationTabGuest" class="tab-guest page-width hidden" data-tab-view="reservation" hidden aria-labelledby="reservationGuestTitle">
+        <div class="tab-guest-card"><span class="guest-symbol">＋</span><p class="eyebrow">RESERVATION</p><h2 id="reservationGuestTitle">로그인하고 예약하세요</h2><p>밴드를 선택해 가입하면 새 예약과 내 예약을 한 화면에서 관리할 수 있습니다.</p><button id="reservationLoginButton" class="button button-primary" type="button">로그인 / 계정 만들기</button></div>
+      </section>
+      <section id="equipmentArea" class="equipment-area page-width hidden" data-tab-view="equipment" hidden aria-labelledby="equipmentTitle">
+        <div class="section-heading equipment-heading">
+          <div><p class="eyebrow">GEAR CHECK</p><h2 id="equipmentTitle">장비 이상 신고</h2></div>
+          <span id="equipmentOpenCount" class="notice-count">불러오는 중</span>
+        </div>
+        <div class="equipment-layout">
+          <form id="equipmentReportForm" class="panel equipment-report-form">
+            <div class="panel-heading"><h3>문제 알리기</h3><span>사진 선택</span></div>
+            <label>장비 이름<input id="equipmentName" maxlength="60" required placeholder="예: 기타 앰프 1번" /></label>
+            <label>이상 내용<textarea id="equipmentDescription" maxlength="600" required placeholder="증상과 확인한 내용을 자세히 적어 주세요."></textarea></label>
+            <label>사진 (선택)<input id="equipmentPhoto" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+            <div id="equipmentPhotoPreview" class="equipment-photo-preview hidden"></div>
+            <button class="button button-primary form-submit" type="submit">장비 이상 신고하기</button>
+            <p class="form-help">사진은 전송 전에 자동으로 용량을 줄입니다.</p>
+          </form>
+          <div class="panel equipment-list-panel">
+            <div class="panel-heading"><h3>장비 상태</h3><button id="refreshEquipmentButton" class="text-button" type="button">새로고침</button></div>
+            <div id="equipmentReportList" class="equipment-report-list"><p class="empty-message">장비 상태를 불러오는 중입니다.</p></div>
+          </div>
+        </div>
+      </section>
+      <section id="equipmentTabGuest" class="tab-guest page-width hidden" data-tab-view="equipment" hidden aria-labelledby="equipmentGuestTitle">
+        <div class="tab-guest-card"><span class="guest-symbol">⚙</span><p class="eyebrow">GEAR CHECK</p><h2 id="equipmentGuestTitle">로그인하고 장비를 확인하세요</h2><p>합주실 장비 상태를 확인하고 사진과 함께 이상을 신고할 수 있습니다.</p><button id="equipmentLoginButton" class="button button-primary" type="button">로그인 / 계정 만들기</button></div>
+      </section>
+      <section id="adminArea" class="admin-area page-width hidden" data-tab-view="menu" hidden aria-label="메인 관리자 도구">
         <div class="section-heading"><div><p class="eyebrow">MAIN ADMIN ONLY</p><h2>운영 관리</h2></div></div>
         <div class="admin-grid">
           <form id="bandForm" class="panel">
@@ -251,6 +271,14 @@
     </main>
 
     <footer class="footer page-width"><span>SOUNDCHECK</span><p>SHARE THE ROOM · RESPECT THE NEXT BAND</p></footer>
+
+    <nav id="bottomNavigation" class="bottom-navigation" aria-label="주요 화면">
+      <button class="bottom-tab is-active" type="button" data-tab-target="home" aria-current="page"><span class="bottom-tab-icon">⌂</span><span>홈</span></button>
+      <button class="bottom-tab" type="button" data-tab-target="schedule"><span class="bottom-tab-icon">▦</span><span>일정</span></button>
+      <button class="bottom-tab bottom-tab-primary" type="button" data-tab-target="reservation"><span class="bottom-tab-icon">＋</span><span>예약</span></button>
+      <button class="bottom-tab" type="button" data-tab-target="equipment"><span class="bottom-tab-icon">⚙</span><span>장비</span></button>
+      <button class="bottom-tab" type="button" data-tab-target="menu"><span class="bottom-tab-icon">≡</span><span>메뉴</span></button>
+    </nav>
 
     <dialog id="authDialog" class="auth-dialog">
       <button id="closeAuthButton" class="dialog-close" aria-label="닫기">×</button>
@@ -328,6 +356,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260806.1"></script>
+    <script type="module" src="./app.js?v=20260806.2"></script>
   </body>
 </html>

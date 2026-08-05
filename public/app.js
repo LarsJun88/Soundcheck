@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.1";
+const APP_VERSION = "20260806.2";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -106,6 +106,7 @@ const state = {
   equipmentPhotoDataUrl: "",
   usageStats: null,
   room: DEFAULT_ROOM,
+  activeTab: "home",
   calendarView: "week",
   mobileScheduleMode: "today",
   messaging: null,
@@ -129,6 +130,51 @@ function requiredElement(id) {
   return element;
 }
 
+const APP_TABS = new Set(["home", "schedule", "reservation", "equipment", "menu"]);
+const TAB_HASH_ALIASES = {
+  "": "home",
+  top: "home",
+  home: "home",
+  schedule: "schedule",
+  reservation: "reservation",
+  memberArea: "reservation",
+  equipment: "equipment",
+  equipmentArea: "equipment",
+  menu: "menu",
+  trashSchedule: "menu",
+  noticeTitle: "menu",
+  bandDirectoryTitle: "menu",
+  adminArea: "menu",
+};
+
+function tabFromLocationHash() {
+  const key = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+  return TAB_HASH_ALIASES[key] || "home";
+}
+
+function setActiveTab(tab, options = {}) {
+  const nextTab = APP_TABS.has(tab) ? tab : "home";
+  const { updateHash = true, scroll = true } = options;
+  state.activeTab = nextTab;
+  document.body.dataset.activeTab = nextTab;
+  document.querySelectorAll("[data-tab-view]").forEach((panel) => {
+    panel.hidden = panel.dataset.tabView !== nextTab;
+  });
+  document.querySelectorAll("[data-tab-target]").forEach((button) => {
+    const selected = button.dataset.tabTarget === nextTab;
+    button.classList.toggle("is-active", selected);
+    if (selected) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  if (updateHash) {
+    const url = new URL(window.location.href);
+    url.hash = nextTab;
+    window.history.replaceState(null, "", url);
+  }
+  if (nextTab === "equipment" && state.profile) loadEquipmentReports();
+  if (nextTab === "menu" && state.profile?.role === "main_admin") loadMonthlyUsageStats();
+  if (scroll) window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+}
 const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
 
 function normaliseLoginId(value) {
@@ -641,8 +687,19 @@ function renderNotices() {
       <time>${formatFirestoreDate(notice.publishedAt)}</time>
       ${state.profile?.role === "main_admin" ? `<button class="text-button notice-delete" data-delete-notice="${notice.id}">삭제</button>` : ""}
     </article>`).join("") : "<p class=\"empty-message\">등록된 공지사항이 없습니다.</p>";
+  const latest = notices[0];
+  if (!latest) {
+    elements.homeNoticePreview.innerHTML = '<p class="home-notice-empty">새로운 공지가 없습니다. 오늘도 즐거운 합주 되세요.</p>';
+    return;
+  }
+  const summary = String(latest.body || "").trim();
+  elements.homeNoticePreview.innerHTML = `
+    <article class="home-notice-preview">
+      <time>${formatFirestoreDate(latest.publishedAt)}</time>
+      <h2>${escapeHtml(latest.title)}</h2>
+      <p>${escapeHtml(summary.length > 130 ? `${summary.slice(0, 130)}…` : summary)}</p>
+    </article>`;
 }
-
 function bandLogoSource(band) {
   return String(band.logoThumbnailDataUrl || band.logoDataUrl || "");
 }
@@ -984,6 +1041,9 @@ function renderProfile() {
   elements.openAuthButton.classList.toggle("hidden", Boolean(state.firebaseUser && profile));
   elements.openAuthButton.textContent = needsActivation ? "권한 활성화" : "로그인 / 시작";
   elements.memberArea.classList.toggle("hidden", !isActive);
+  elements.reservationTabGuest.classList.toggle("hidden", isActive);
+  elements.equipmentArea.classList.toggle("hidden", !isActive);
+  elements.equipmentTabGuest.classList.toggle("hidden", isActive);
   elements.adminArea.classList.toggle("hidden", profile?.role !== "main_admin");
   elements.reservationBandField.classList.toggle("hidden", profile?.role !== "main_admin");
   if (!profile) {
@@ -1044,6 +1104,7 @@ function subscribeToPublicData() {
     renderNotices();
   }, () => {
     elements.noticeList.innerHTML = "<p class=\"empty-message\">공지사항을 불러올 수 없습니다.</p>";
+    elements.homeNoticePreview.innerHTML = "<p class=\"home-notice-empty\">공지사항을 불러올 수 없습니다.</p>";
   });
   onSnapshot(doc(db, "settings", "room"), (snapshot) => {
     state.room = snapshot.exists() ? { ...DEFAULT_ROOM, ...snapshot.data() } : DEFAULT_ROOM;
@@ -1053,21 +1114,14 @@ function subscribeToPublicData() {
 }
 
 async function showReservationOverview() {
-  if (state.profile) {
-    elements.memberArea.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-  await loadPublicReservations();
-  elements.schedule.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!state.profile) await loadPublicReservations();
+  setActiveTab("schedule");
   showToast("시간표에서 예약된 날짜와 시간을 확인할 수 있습니다.");
 }
 
 function openReservationEntry() {
-  if (!state.profile) {
-    openAuth();
-    return;
-  }
-  elements.memberArea.scrollIntoView({ behavior: "smooth", block: "start" });
+  setActiveTab("reservation");
+  if (!state.profile) openAuth();
 }
 function showReservation(id) {
   const reservation = [...state.reservations, ...state.monthReservations].find((item) => item.id === id);
@@ -1580,6 +1634,17 @@ async function loadMonthlyUsageStats() {
 function bindEvents() {
   elements.openAuthButton.addEventListener("click", openAuth);
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
+  elements.reservationLoginButton.addEventListener("click", openAuth);
+  elements.equipmentLoginButton.addEventListener("click", openAuth);
+  elements.bottomNavigation.addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-tab-target]")?.dataset.tabTarget;
+    if (tab) setActiveTab(tab);
+  });
+  document.querySelectorAll("[data-open-tab]").forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    setActiveTab(button.dataset.openTab);
+  }));
+  window.addEventListener("hashchange", () => setActiveTab(tabFromLocationHash(), { updateHash: false }));
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
   elements.closeTrashNoticeButton.addEventListener("click", () => elements.trashNoticeDialog.close());
@@ -1709,10 +1774,12 @@ function initialise() {
   updateTrashNotificationUi();
   applyRoomToControls();
   bindEvents();
+  setActiveTab(tabFromLocationHash(), { updateHash: false, scroll: false });
   setupAppInstall();
   registerServiceWorker();
   if (configMissing) {
     elements.noticeList.innerHTML = "<p class=\"empty-message\">Firebase 설정 후 공지사항과 시간표가 표시됩니다.</p>";
+    elements.homeNoticePreview.innerHTML = "<p class=\"home-notice-empty\">Firebase 설정이 필요합니다.</p>";
     elements.noticeCount.textContent = "설정 필요";
     elements.bandDirectory.innerHTML = "<p class=\"empty-message\">Firebase 설정 후 밴드 목록이 표시됩니다.</p>";
     elements.bandCount.textContent = "설정 필요";
