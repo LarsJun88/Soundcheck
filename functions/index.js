@@ -339,6 +339,37 @@ exports.createBand = onCall(async (request) => {
   return { bandId: bandRef.id, name };
 });
 
+exports.listMemberRoster = onCall(async (request) => {
+  await requireMainAdmin(request);
+  const [usersSnapshot, bandsSnapshot] = await Promise.all([
+    db.collection("users").get(),
+    db.collection("bands").get(),
+  ]);
+  const bandNames = new Map(bandsSnapshot.docs.map((item) => [item.id, String(item.data().name || "")]));
+  const members = usersSnapshot.docs.map((item) => {
+    const profile = item.data();
+    const createdAtValue = profile.joinedAt || profile.createdAt;
+    return {
+      displayName: String(profile.displayName || "이름 없음").slice(0, 40),
+      loginId: String(profile.loginId || "").slice(0, 40),
+      role: profile.role === "main_admin" ? "main_admin" : "band_admin",
+      bandName: profile.bandId ? String(bandNames.get(profile.bandId) || "삭제된 밴드") : "",
+      active: profile.active === true,
+      createdAt: createdAtValue?.toDate ? createdAtValue.toDate().toISOString() : "",
+    };
+  }).sort((a, b) => Number(b.active) - Number(a.active)
+    || a.bandName.localeCompare(b.bandName, "ko")
+    || a.displayName.localeCompare(b.displayName, "ko"));
+  return {
+    members,
+    summary: {
+      total: members.length,
+      active: members.filter((member) => member.active).length,
+      inactive: members.filter((member) => !member.active).length,
+    },
+  };
+});
+
 exports.deleteBand = onCall(async (request) => {
   const { auth } = await requireMainAdmin(request);
   const bandId = String(request.data?.bandId || "").trim();

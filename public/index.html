@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260806.8" />
+    <meta name="soundcheck-version" content="20260806.9" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260806.8" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260806.9" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260806.8" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260806.8" />
+    <link rel="stylesheet" href="./styles.css?v=20260806.9" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260806.9" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -255,6 +255,16 @@
             </div>
           </form>
         </div>
+        <section class="member-roster" aria-labelledby="memberRosterTitle">
+          <div class="section-heading member-roster-heading">
+            <div><p class="eyebrow">ACCOUNT DIRECTORY</p><h2 id="memberRosterTitle">가입자 명단</h2></div>
+            <div class="member-roster-actions"><span id="memberRosterCount">0명</span><button id="memberRosterRefreshButton" class="text-button" type="button">새로고침</button></div>
+          </div>
+          <div class="member-roster-table">
+            <div class="member-roster-header" aria-hidden="true"><span>가입자</span><span>소속 밴드</span><span>권한</span><span>가입일</span><span>상태</span></div>
+            <div id="memberRosterList" class="member-roster-list" aria-live="polite"><p class="empty-message">가입자 명단을 불러오는 중입니다.</p></div>
+          </div>
+        </section>
         <section class="usage-stats" aria-labelledby="usageStatsTitle">
           <div class="section-heading stats-heading">
             <div><p class="eyebrow">ROOM INSIGHTS</p><h2 id="usageStatsTitle">월별 이용 통계</h2></div>
@@ -356,6 +366,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260806.8"></script>
+    <script type="module" src="./app.js?v=20260806.9"></script>
   </body>
 </html>

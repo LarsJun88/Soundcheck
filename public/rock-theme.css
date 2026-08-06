@@ -446,6 +446,24 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
 .equipment-status-control { grid-column: 1 / -1; margin: 0; padding: 8px 11px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 .equipment-status-control select { width: 126px; margin: 0; padding: 7px 9px; font-size: 12px; }
 
+.member-roster { margin-top: 84px; padding-top: 72px; border-top: 1px solid var(--line); }
+.member-roster-heading { align-items: center; }
+.member-roster-actions { display: flex; align-items: center; gap: 13px; color: var(--muted); font: 700 11px "Gowun Dodum", sans-serif; }
+.member-roster-table { overflow: hidden; border: 1px solid var(--line); background: var(--cream); box-shadow: 6px 6px 0 rgba(7,20,61,.1); }
+.member-roster-header, .member-roster-row { display: grid; grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) 100px 110px 82px; align-items: center; gap: 12px; }
+.member-roster-header { min-height: 43px; padding: 9px 15px; color: rgba(255,255,255,.68); background: #07143d; font: 700 10px "Gowun Dodum", sans-serif; }
+.member-roster-list { display: grid; }
+.member-roster-row { min-height: 68px; padding: 11px 15px; border-top: 1px solid var(--line); color: var(--ink); font-size: 12px; }
+.member-roster-row:first-child { border-top: 0; }
+.member-roster-row.is-inactive { color: var(--muted); background: #f0f3f4; }
+.member-roster-person { min-width: 0; display: grid; gap: 3px; }
+.member-roster-person strong { overflow: hidden; font: 800 13px "Montserrat", "Gowun Dodum", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.member-roster-person span { overflow: hidden; color: var(--muted); font: 10px "DM Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+.member-roster-band { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-roster-role { color: #38516c; font-weight: 700; }
+.member-roster-row time { color: var(--muted); font: 10px "DM Mono", monospace; }
+.member-roster-status { width: fit-content; padding: 4px 8px; border-radius: 999px; color: #fff; background: #23977b; font-size: 10px; font-weight: 700; }
+.member-roster-status.is-inactive { color: #68717d; background: #dce3e6; }
 .usage-stats { margin-top: 84px; padding-top: 72px; border-top: 1px solid var(--line); }
 .stats-heading { align-items: center; }.stats-month-label { min-width: 180px; margin: 0; }.stats-month-label input { margin-top: 4px; }
 .stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 11px; margin-bottom: 19px; }
@@ -477,6 +495,12 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
   .month-booking span { display: none; }.month-booking strong { display: block; font-size: 9px; line-height: 1.2; }.month-more { padding-left: 3px; font-size: 8px; }
   .equipment-area { padding-top: 58px; }
   .equipment-report { grid-template-columns: 92px minmax(0, 1fr); }.equipment-photo-button { width: 92px; min-height: 112px; }.equipment-photo-button img { min-height: 112px; }.equipment-report-copy { padding: 12px 10px; }
+  .member-roster-heading { align-items: stretch; }.member-roster-actions { justify-content: space-between; }
+  .member-roster-table { box-shadow: 4px 4px 0 rgba(7,20,61,.1); }
+  .member-roster-header { display: none; }
+  .member-roster-row { min-height: 0; padding: 14px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "person status" "band role" "joined joined"; gap: 8px 12px; }
+  .member-roster-person { grid-area: person; }.member-roster-band { grid-area: band; }.member-roster-role { grid-area: role; text-align: right; }.member-roster-row time { grid-area: joined; }.member-roster-row time::before { content: "가입 "; }
+  .member-roster-status { grid-area: status; }
   .stats-heading { align-items: stretch; }.stats-month-label { width: 100%; }
   .stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }.stats-summary > article { min-height: 101px; padding: 13px; }.stats-summary strong { font-size: 26px; }
   .usage-row > div:first-child { align-items: flex-start; flex-direction: column; gap: 1px; }

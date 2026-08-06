@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.8";
+const APP_VERSION = "20260806.9";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -103,6 +103,7 @@ const state = {
   monthReservations: [],
   announcements: [],
   equipmentReports: [],
+  memberRoster: [],
   equipmentPhotoDataUrl: "",
   usageStats: null,
   room: DEFAULT_ROOM,
@@ -172,7 +173,10 @@ function setActiveTab(tab, options = {}) {
     window.history.replaceState(null, "", url);
   }
   if (nextTab === "equipment" && state.profile) loadEquipmentReports();
-  if (nextTab === "menu" && state.profile?.role === "main_admin") loadMonthlyUsageStats();
+  if (nextTab === "menu" && state.profile?.role === "main_admin") {
+    loadMonthlyUsageStats();
+    loadMemberRoster();
+  }
   if (scroll) window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
 }
 const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
@@ -1468,7 +1472,7 @@ async function handleBandDelete(event) {
   try {
     await call("deleteBand", { bandId: band.id });
     clearPendingBandLogo();
-    await loadBandDirectory();
+    await Promise.all([loadBandDirectory(), loadMemberRoster()]);
     showToast(`${band.name} 밴드를 삭제했습니다.`);
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -1624,6 +1628,45 @@ async function updateEquipmentStatus(reportId, status) {
   }
 }
 
+function memberRosterDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "날짜 없음";
+  return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "short", day: "numeric" }).format(date);
+}
+
+function renderMemberRoster() {
+  if (!elements.memberRosterList || state.profile?.role !== "main_admin") return;
+  const members = Array.isArray(state.memberRoster) ? state.memberRoster : [];
+  const activeCount = members.filter((member) => member.active).length;
+  elements.memberRosterCount.textContent = `전체 ${members.length}명 · 활성 ${activeCount}명`;
+  elements.memberRosterList.innerHTML = members.length ? members.map((member) => {
+    const roleLabel = member.role === "main_admin" ? "메인 관리자" : "밴드원";
+    const bandName = member.role === "main_admin" ? "전체 밴드" : (member.bandName || "소속 없음");
+    const statusLabel = member.active ? "활성" : "비활성";
+    return `
+      <article class="member-roster-row ${member.active ? "" : "is-inactive"}">
+        <div class="member-roster-person"><strong>${escapeHtml(member.displayName || "이름 없음")}</strong><span>${escapeHtml(member.loginId || "아이디 없음")}</span></div>
+        <span class="member-roster-band">${escapeHtml(bandName)}</span>
+        <span class="member-roster-role">${roleLabel}</span>
+        <time datetime="${escapeHtml(member.createdAt || "")}">${memberRosterDate(member.createdAt)}</time>
+        <span class="member-roster-status ${member.active ? "" : "is-inactive"}">${statusLabel}</span>
+      </article>`;
+  }).join("") : '<p class="empty-message">등록된 가입자가 없습니다.</p>';
+}
+
+async function loadMemberRoster() {
+  if (state.profile?.role !== "main_admin") return;
+  elements.memberRosterList.innerHTML = '<p class="empty-message">가입자 명단을 불러오는 중입니다.</p>';
+  try {
+    const result = await call("listMemberRoster");
+    state.memberRoster = Array.isArray(result.data?.members) ? result.data.members : [];
+    renderMemberRoster();
+  } catch (error) {
+    elements.memberRosterList.innerHTML = '<p class="empty-message">가입자 명단을 불러올 수 없습니다.</p>';
+    showToast(errorMessage(error), true);
+  }
+}
+
 function renderUsageStats() {
   if (!elements.usageStatsSummary || state.profile?.role !== "main_admin") return;
   const stats = state.usageStats;
@@ -1747,6 +1790,7 @@ function bindEvents() {
     const report = state.equipmentReports.find((item) => item.id === reportId);
     if (report?.photoDataUrl) window.open(report.photoDataUrl, "_blank", "noopener,noreferrer");
   });
+  elements.memberRosterRefreshButton.addEventListener("click", loadMemberRoster);
   elements.statsMonth.addEventListener("change", loadMonthlyUsageStats);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
@@ -1837,6 +1881,7 @@ function initialise() {
         syncPushSubscription({ silent: true }),
         loadEquipmentReports(),
         state.profile.role === "main_admin" ? loadMonthlyUsageStats() : Promise.resolve(),
+        state.profile.role === "main_admin" ? loadMemberRoster() : Promise.resolve(),
       ]);
     } else {
       state.pushToken = "";
