@@ -799,7 +799,7 @@ exports.createReservation = onCall(async (request) => {
   }
 
   const repeatWeeks = Number(request.data?.repeatWeeks || 1);
-  if (!Number.isInteger(repeatWeeks) || repeatWeeks < 1 || repeatWeeks > 12) badRequest("반복 예약은 최대 12주까지 가능합니다.");
+  if (!Number.isInteger(repeatWeeks) || ![1, 4].includes(repeatWeeks)) badRequest("반복 예약은 한 달(4주) 단위로만 가능합니다.");
   const dates = Array.from({ length: repeatWeeks }, (_, index) => addDaysToDateText(date, index * 7));
   const bandRef = db.collection("bands").doc(bandId);
   const reservationRefs = dates.map(() => db.collection("reservations").doc());
@@ -863,7 +863,7 @@ exports.createReservation = onCall(async (request) => {
 
   await sendPushToBand(bandId, {
     title: repeatWeeks > 1 ? `합주실 반복 예약 ${repeatWeeks}회 완료` : "합주실 예약 완료",
-    body: `${reservationBandName} · ${reservationDateLabel(date)}부터 ${repeatWeeks > 1 ? "매주 " : ""}${displayTime(startHour)}–${displayTime(endHour)}${repeatWeeks > 1 ? ` · ${repeatWeeks}주` : ` · ${trashTitleForDate(date)}`}`,
+    body: `${reservationBandName} · ${reservationDateLabel(date)}부터 ${repeatWeeks > 1 ? "매주 " : ""}${displayTime(startHour)}–${displayTime(endHour)}${repeatWeeks > 1 ? " · 한 달(4주)" : ` · ${trashTitleForDate(date)}`}`,
     kind: "reservation_created",
     reservationId: reservationRefs[0].id,
     url: "./#schedule",

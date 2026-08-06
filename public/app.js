@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.7";
+const APP_VERSION = "20260806.8";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -387,10 +387,11 @@ function renderRepeatReservationUi() {
   elements.repeatWeeksField.classList.toggle("hidden", !enabled);
   elements.repeatReservationSummary.classList.toggle("hidden", !enabled);
   if (!enabled) return;
-  const repeatWeeks = Number(elements.repeatWeeks.value || 4);
+  const repeatWeeks = 4;
+  elements.repeatWeeks.value = String(repeatWeeks);
   const firstDate = elements.reservationDate.value || todayInSeoul();
   const lastDate = addDays(firstDate, (repeatWeeks - 1) * 7);
-  elements.repeatReservationSummary.textContent = `${humanDate(firstDate, true)}부터 ${humanDate(lastDate, true)}까지 매주 · 총 ${repeatWeeks}회`;
+  elements.repeatReservationSummary.textContent = `${humanDate(firstDate, true)}부터 ${humanDate(lastDate, true)}까지 한 달(4주) 동안 매주 · 총 4회`;
 }
 function showTrashNotice(dateText, reservation = null, reminder = false) {
   const schedule = trashScheduleForDate(dateText);
@@ -1199,7 +1200,7 @@ async function handleReservation(event) {
   const startHour = Number(elements.startHour.value);
   const endHour = Number(elements.endHour.value);
   const bandId = state.profile.role === "main_admin" ? elements.reservationBand.value : state.profile.bandId;
-  const repeatWeeks = elements.repeatReservation.checked ? Number(elements.repeatWeeks.value) : 1;
+  const repeatWeeks = elements.repeatReservation.checked ? 4 : 1;
   if (endHour <= startHour) return showToast("종료 시간은 시작 시간보다 뒤여야 합니다.", true);
   try {
     const result = await call("createReservation", {
@@ -1222,7 +1223,7 @@ async function handleReservation(event) {
     showTrashNotice(date, createdReservation, false);
     scheduleTrashReminder(createdReservation);
 await loadMonthReservations();
-    showToast(repeatWeeks > 1 ? `매주 같은 시간으로 ${repeatWeeks}회 예약했습니다.` : "예약이 완료되었습니다. 해당 요일의 쓰레기 배출 안내를 확인해 주세요.");
+    showToast(repeatWeeks > 1 ? "한 달 동안 매주 같은 시간으로 총 4회 예약했습니다." : "예약이 완료되었습니다. 해당 요일의 쓰레기 배출 안내를 확인해 주세요.");
   } catch (error) {
     showToast(errorMessage(error), true);
   }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260806.7" />
+    <meta name="soundcheck-version" content="20260806.8" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260806.7" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260806.8" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260806.7" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260806.7" />
+    <link rel="stylesheet" href="./styles.css?v=20260806.8" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260806.8" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -168,16 +168,11 @@
                 <select id="endHour" required></select>
               </label>
             </div>
-            <label class="repeat-toggle"><input id="repeatReservation" type="checkbox" /><span><strong>매주 반복 예약</strong><small>같은 요일과 시간으로 한 번에 예약합니다.</small></span></label>
-            <label id="repeatWeeksField" class="hidden">총 반복 횟수
-              <select id="repeatWeeks">
-                <option value="2">2주</option><option value="3">3주</option><option value="4" selected>4주</option>
-                <option value="5">5주</option><option value="6">6주</option><option value="8">8주</option><option value="10">10주</option><option value="12">12주</option>
-              </select>
-            </label>
+            <label class="repeat-toggle"><input id="repeatReservation" type="checkbox" /><span><strong>매주 반복 예약</strong><small>한 달 동안 같은 요일과 시간으로 총 4회 예약합니다.</small></span></label>
+            <div id="repeatWeeksField" class="repeat-month-field hidden"><span>반복 기간</span><strong>한 달 · 총 4회</strong><input id="repeatWeeks" type="hidden" value="4" /></div>
             <p id="repeatReservationSummary" class="repeat-summary hidden"></p>
             <button class="button button-primary form-submit" type="submit">시간 예약하기</button>
-            <p class="form-help">반복 예약은 모든 주차가 비어 있을 때에만 한 번에 저장됩니다.</p>
+            <p class="form-help">반복 예약은 한 달(4주)의 모든 일정이 비어 있을 때에만 한 번에 저장됩니다.</p>
           </form>
           <div class="panel upcoming-panel">
             <div class="panel-heading"><h3>내 예약</h3><span id="myReservationCount">0건</span></div>
@@ -361,6 +356,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260806.7"></script>
+    <script type="module" src="./app.js?v=20260806.8"></script>
   </body>
 </html>
