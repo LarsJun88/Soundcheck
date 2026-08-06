@@ -512,6 +512,7 @@ main { min-height: calc(100dvh - 172px); }
 .bottom-tab-primary.is-active .bottom-tab-icon { border-color: var(--signal); box-shadow: 0 4px 0 var(--signal); }
 .toast { z-index: 30; bottom: max(100px, calc(env(safe-area-inset-bottom) + 86px)); }
 .footer { padding-bottom: 38px; }
+.footer.page-width { width: 100%; max-width: none; margin-inline: 0; padding-inline: max(20px, calc((100vw - 1180px) / 2)); background: #051137; }
 
 @media (max-width: 850px) {
   .home-dashboard { grid-template-columns: 1fr; }
@@ -519,6 +520,7 @@ main { min-height: calc(100dvh - 172px); }
 
 @media (max-width: 600px) {
   body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  body::after { content: ""; position: fixed; z-index: 2147482999; inset: auto 0 0; height: calc(76px + env(safe-area-inset-bottom)); pointer-events: none; background: #051137; }
   .hero[data-tab-view="home"] { padding-top: 55px; padding-bottom: 66px; }
   .home-dashboard { padding-top: 0; padding-bottom: 72px; gap: 14px; }
   .home-notice-card { min-height: 204px; padding: 21px; box-shadow: 4px 4px 0 rgba(7,20,61,.13); }
