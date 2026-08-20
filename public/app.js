@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260806.9";
+const APP_VERSION = "20260820.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -110,6 +110,7 @@ const state = {
   activeTab: "home",
   calendarView: "month",
   mobileScheduleMode: "today",
+  pendingCalendarReservation: null,
   messaging: null,
   pushToken: "",
   foregroundMessagingBound: false,
@@ -901,6 +902,78 @@ function reservationIsLive(reservation) {
     && (Number(reservation.endHour) * 60) > currentMinutes;
 }
 
+function canCancelReservation(reservation) {
+  if (!state.profile || !reservation) return false;
+  return state.profile.role === "main_admin" || reservation.bandId === state.profile.bandId;
+}
+
+function calendarReservationsForDate(dateText) {
+  const byId = new Map();
+  [...state.reservations, ...state.monthReservations]
+    .filter((reservation) => reservation.date === dateText)
+    .forEach((reservation) => byId.set(reservation.id, reservation));
+  return [...byId.values()];
+}
+
+function calendarHourIsPast(dateText, hour) {
+  const now = seoulNowParts();
+  return dateText < now.date || (dateText === now.date && Number(hour) <= now.hour);
+}
+
+function firstAvailableCalendarHour(dateText, reservations = calendarReservationsForDate(dateText)) {
+  if (dateText < todayInSeoul()) return null;
+  const now = seoulNowParts();
+  const firstHour = dateText === now.date
+    ? Math.max(Number(state.room.openHour), now.hour + 1)
+    : Number(state.room.openHour);
+  for (let hour = firstHour; hour < Number(state.room.closeHour); hour += 1) {
+    const occupied = reservations.some((reservation) => Number(reservation.startHour) <= hour && Number(reservation.endHour) > hour);
+    if (!occupied) return hour;
+  }
+  return null;
+}
+
+function openCalendarReservation(dateText, preferredHour = null) {
+  const hour = preferredHour !== null && preferredHour !== "" && Number.isInteger(Number(preferredHour))
+    ? Number(preferredHour)
+    : firstAvailableCalendarHour(dateText);
+  if (hour === null || calendarHourIsPast(dateText, hour)) {
+    showToast(dateText < todayInSeoul() ? "지난 날짜에는 예약할 수 없습니다." : "선택한 날짜에는 예약 가능한 시간이 없습니다.", true);
+    return;
+  }
+  const occupied = calendarReservationsForDate(dateText).some((reservation) => Number(reservation.startHour) <= hour && Number(reservation.endHour) > hour);
+  if (occupied) {
+    showToast("방금 다른 예약이 들어왔습니다. 다른 시간을 선택해 주세요.", true);
+    return;
+  }
+  state.pendingCalendarReservation = { date: dateText, hour };
+  if (!state.profile) {
+    showToast(`${humanDate(dateText, true)} ${pad(hour)}:00 예약을 위해 먼저 로그인해 주세요.`);
+    openAuth();
+    return;
+  }
+  completePendingCalendarReservation();
+}
+
+function completePendingCalendarReservation() {
+  const selection = state.pendingCalendarReservation;
+  if (!selection || !state.profile) return;
+  if (state.profile.role === "main_admin" && !state.bands.some((band) => band.active)) return;
+  state.pendingCalendarReservation = null;
+  elements.reservationDate.value = selection.date;
+  elements.startHour.value = String(selection.hour);
+  elements.endHour.value = String(Math.min(selection.hour + 1, Number(state.room.closeHour)));
+  elements.repeatReservation.checked = false;
+  renderReservationTrashPreview();
+  renderRepeatReservationUi();
+  setActiveTab("reservation");
+  window.requestAnimationFrame(() => {
+    elements.reservationForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    elements.endHour.focus({ preventScroll: true });
+  });
+  showToast(`${humanDate(selection.date, true)} ${pad(selection.hour)}:00–${pad(selection.hour + 1)}:00을 선택했습니다.`);
+}
+
 function mobileScheduleDates() {
   if (state.mobileScheduleMode === "today") return [todayInSeoul()];
   const baseDate = elements.weekStart.value || todayInSeoul();
@@ -920,6 +993,8 @@ function renderMobileScheduleList() {
   elements.mobileWeekButton.setAttribute("aria-selected", String(state.mobileScheduleMode === "week"));
   elements.mobileScheduleList.innerHTML = dates.map((date) => {
     const dayReservations = reservations.filter((reservation) => reservation.date === date);
+    const availableHour = firstAvailableCalendarHour(date, dayReservations);
+    const reserveButton = availableHour === null ? "" : `<button class="mobile-day-reserve-button" type="button" data-reserve-date="${date}" data-reserve-hour="${availableHour}" aria-label="${escapeHtml(humanDate(date, true))} ${pad(availableHour)}시 예약하기">+ 예약</button>`;
     const dayMarkup = dayReservations.length ? dayReservations.map((reservation) => {
       const isLive = reservationIsLive(reservation);
       const trash = trashScheduleForDate(reservation.date);
@@ -937,7 +1012,7 @@ function renderMobileScheduleList() {
       <article class="mobile-day-group">
         <div class="mobile-day-heading ${date === todayInSeoul() ? "is-today" : ""}">
           <strong>${escapeHtml(humanDate(date, true))}${date === todayInSeoul() ? " · 오늘" : ""}</strong>
-          <span>${dayReservations.length}건</span>
+          <span>${dayReservations.length}건</span>${reserveButton}
         </div>
         ${dayMarkup}
       </article>`;
@@ -977,12 +1052,14 @@ function renderCalendar() {
     for (const day of days) {
       const reservation = state.reservations.find((item) => item.date === day && item.startHour <= hour && item.endHour > hour);
       if (!reservation) {
-        slots.push(`<div class="calendar-slot" data-date="${day}" data-hour="${hour}"></div>`);
+        const isPast = calendarHourIsPast(day, hour);
+        const reserveButton = isPast ? "" : `<button class="calendar-slot-action" type="button" data-reserve-date="${day}" data-reserve-hour="${hour}" aria-label="${escapeHtml(`${humanDate(day, true)} ${pad(hour)}:00–${pad(hour + 1)}:00 예약하기`)}"><span aria-hidden="true">＋</span><small>예약</small></button>`;
+        slots.push(`<div class="calendar-slot ${isPast ? "is-past" : "is-reservable"}">${reserveButton}</div>`);
         continue;
       }
       const firstSlot = reservation.startHour === hour;
       const label = firstSlot ? `<span>${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00</span>${reservation.repeatCount > 1 ? "↻ " : ""}${escapeHtml(reservation.bandName)}` : "";
-      slots.push(`<div class="calendar-slot"><button class="calendar-booking" data-reservation-id="${reservation.id}" style="border-left-color:${escapeHtml(reservation.bandColor || "#C8F063")}">${label}</button></div>`);
+      slots.push(`<div class="calendar-slot"><button class="calendar-booking ${canCancelReservation(reservation) ? "is-cancellable" : ""}" type="button" data-reservation-id="${reservation.id}" style="border-left-color:${escapeHtml(reservation.bandColor || "#C8F063")}" aria-label="${escapeHtml(`${reservation.bandName} 예약 상세${canCancelReservation(reservation) ? " 및 취소" : ""}`)}">${label}</button></div>`);
     }
   }
   elements.calendarWrap.innerHTML = `<div class="calendar">${slots.join("")}</div>`;
@@ -1002,14 +1079,17 @@ function renderMonthCalendar() {
     const dayReservations = state.monthReservations
       .filter((reservation) => reservation.date === dateText)
       .sort((a, b) => Number(a.startHour) - Number(b.startHour));
+    const availableHour = firstAvailableCalendarHour(dateText, dayReservations);
     const visible = dayReservations.slice(0, 3).map((reservation) => `
-      <button class="month-booking" type="button" data-reservation-id="${reservation.id}" style="--reservation-color:${escapeHtml(reservation.bandColor || "#52c8d0")}" title="${escapeHtml(`${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00 ${reservation.bandName}`)}">
+      <button class="month-booking ${canCancelReservation(reservation) ? "is-cancellable" : ""}" type="button" data-reservation-id="${reservation.id}" style="--reservation-color:${escapeHtml(reservation.bandColor || "#52c8d0")}" title="${escapeHtml(`${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00 ${reservation.bandName}${canCancelReservation(reservation) ? " · 클릭해서 취소 가능" : ""}`)}">
         <span>${pad(reservation.startHour)}:00</span><strong>${reservation.repeatCount > 1 ? "↻ " : ""}${escapeHtml(reservation.bandName)}</strong>
       </button>`).join("");
     const more = dayReservations.length > 3 ? `<span class="month-more">+${dayReservations.length - 3}건</span>` : "";
     return `
-      <article class="month-day ${dateText === todayInSeoul() ? "is-today" : ""} ${dayReservations.length ? "has-booking" : ""}">
+      <article class="month-day ${dateText === todayInSeoul() ? "is-today" : ""} ${dayReservations.length ? "has-booking" : ""} ${availableHour === null ? "" : "is-reservable"}">
+        ${availableHour === null ? "" : `<button class="month-day-reserve-button" type="button" data-reserve-date="${dateText}" data-reserve-hour="${availableHour}" aria-label="${escapeHtml(`${humanDate(dateText, true)} ${pad(availableHour)}시 예약하기`)}"></button>`}
         <time datetime="${dateText}">${Number(dateText.slice(-2))}</time>
+        ${availableHour === null ? "" : '<span class="month-reserve-hint">+ 예약</span>'}
         <div class="month-day-bookings">${visible}${more}</div>
       </article>`;
   }).join("");
@@ -1051,7 +1131,10 @@ function renderMyReservations() {
 }
 function renderBands() {
   renderBandDirectory();
-  if (state.profile?.role !== "main_admin") return;
+  if (state.profile?.role !== "main_admin") {
+    completePendingCalendarReservation();
+    return;
+  }
   const activeBands = state.bands.filter((band) => band.active);
   const reservationValue = elements.reservationBand.value;
   const logoValue = elements.logoBand.value;
@@ -1064,6 +1147,7 @@ function renderBands() {
   if (activeBands.some((band) => band.id === logoValue)) elements.logoBand.value = logoValue;
   if (activeBands.some((band) => band.id === deleteValue)) elements.deleteBand.value = deleteValue;
   renderBandLogoPreview();
+  completePendingCalendarReservation();
 }
 
 function renderProfile() {
@@ -1165,7 +1249,38 @@ function showReservation(id) {
   elements.reservationDialogTitle.textContent = reservation.bandName;
   elements.reservationDialogInfo.textContent = `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00부터 ${pad(reservation.endHour)}:00까지 예약되어 있습니다.${reservation.repeatCount > 1 ? ` · 매주 반복 ${reservation.repeatIndex + 1}/${reservation.repeatCount}` : ""}`;
   elements.reservationDialogTrash.innerHTML = trashCompactMarkup(reservation.date);
+  const canCancel = canCancelReservation(reservation);
+  elements.reservationDialogCancelButton.classList.toggle("hidden", !canCancel);
+  elements.reservationDialogCancelButton.dataset.reservationId = canCancel ? id : "";
   elements.reservationDialog.showModal();
+}
+
+async function cancelReservationById(id, { closeDialog = false } = {}) {
+  const reservation = [...state.reservations, ...state.monthReservations].find((item) => item.id === id);
+  if (!reservation || !canCancelReservation(reservation)) {
+    showToast("자신의 밴드 예약만 취소할 수 있습니다.", true);
+    return;
+  }
+  const cancelQuestion = reservation.repeatCount > 1
+    ? `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00 반복 예약 중 이 회차만 취소할까요?`
+    : `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00 예약을 취소할까요?`;
+  if (!window.confirm(cancelQuestion)) return;
+  elements.reservationDialogCancelButton.disabled = true;
+  try {
+    await call("cancelReservation", { reservationId: id });
+    state.reservations = state.reservations.filter((item) => item.id !== id);
+    state.monthReservations = state.monthReservations.filter((item) => item.id !== id);
+    renderCalendar();
+    renderMonthCalendar();
+    renderMyReservations();
+    if (closeDialog && elements.reservationDialog.open) elements.reservationDialog.close();
+    await loadMonthReservations();
+    showToast("예약을 취소했습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    elements.reservationDialogCancelButton.disabled = false;
+  }
 }
 
 async function showBandLogo(bandId) {
@@ -1248,6 +1363,7 @@ async function handleLogin(event) {
     }
     subscribeToAppData();
     elements.authDialog.close();
+    completePendingCalendarReservation();
     showToast("로그인했습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -1266,6 +1382,7 @@ async function handleSignup(event) {
     renderProfile();
     subscribeToAppData();
     elements.authDialog.close();
+    completePendingCalendarReservation();
     showToast("밴드원 계정이 활성화되었습니다.");
   } catch (error) {
     if (auth.currentUser && !state.profile) await auth.currentUser.reload();
@@ -1282,6 +1399,7 @@ async function handleClaimInvite(event) {
     renderProfile();
     subscribeToAppData();
     elements.authDialog.close();
+    completePendingCalendarReservation();
     showToast("밴드원 권한이 활성화되었습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -1296,6 +1414,7 @@ async function handleBootstrap(event) {
     renderProfile();
     subscribeToAppData();
     elements.authDialog.close();
+    completePendingCalendarReservation();
     showToast("메인 관리자 권한이 활성화되었습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -1723,6 +1842,14 @@ function bindEvents() {
   window.addEventListener("hashchange", () => setActiveTab(tabFromLocationHash(), { updateHash: false }));
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
+  elements.reservationDialog.addEventListener("close", () => {
+    elements.reservationDialogCancelButton.dataset.reservationId = "";
+    elements.reservationDialogCancelButton.classList.add("hidden");
+  });
+  elements.reservationDialogCancelButton.addEventListener("click", () => {
+    const id = elements.reservationDialogCancelButton.dataset.reservationId;
+    if (id) cancelReservationById(id, { closeDialog: true });
+  });
   elements.closeTrashNoticeButton.addEventListener("click", () => elements.trashNoticeDialog.close());
   elements.trashNotificationButton.addEventListener("click", enableTrashNotifications);
   elements.trashDialogNotificationButton.addEventListener("click", enableTrashNotifications);
@@ -1811,20 +1938,25 @@ function bindEvents() {
   });
   elements.calendarWrap.addEventListener("click", (event) => {
     const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
-    if (id) showReservation(id);
+    if (id) return showReservation(id);
+    const target = event.target.closest("[data-reserve-date]");
+    if (target) openCalendarReservation(target.dataset.reserveDate, target.dataset.reserveHour);
   });
   elements.mobileScheduleList.addEventListener("click", (event) => {
     const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
-    if (id) showReservation(id);
+    if (id) return showReservation(id);
+    const target = event.target.closest("[data-reserve-date]");
+    if (target) openCalendarReservation(target.dataset.reserveDate, target.dataset.reserveHour);
   });
   elements.monthCalendar.addEventListener("click", (event) => {
     const id = event.target.closest("[data-reservation-id]")?.dataset.reservationId;
-    if (id) showReservation(id);
+    if (id) return showReservation(id);
+    const target = event.target.closest("[data-reserve-date]");
+    if (target) openCalendarReservation(target.dataset.reserveDate, target.dataset.reserveHour);
   });
   elements.myReservationList.addEventListener("click", async (event) => {
     const id = event.target.dataset.cancelReservation;
-    if (!id || !window.confirm("이 예약을 취소할까요?")) return;
-    try { await call("cancelReservation", { reservationId: id }); await loadMonthReservations(); showToast("예약을 취소했습니다."); } catch (error) { showToast(errorMessage(error), true); }
+    if (id) await cancelReservationById(id);
   });
 }
 
@@ -1877,6 +2009,7 @@ function initialise() {
     updateTrashNotificationUi();
     if (state.profile) {
       subscribeToAppData();
+      completePendingCalendarReservation();
       await Promise.all([
         syncPushSubscription({ silent: true }),
         loadEquipmentReports(),
