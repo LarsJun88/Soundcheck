@@ -593,3 +593,42 @@ main { min-height: calc(100dvh - 172px); }
   .mobile-day-heading { gap: 7px; }
   .mobile-day-heading strong { min-width: 0; }
 }
+
+/* HOME STATUS · RESERVATION NOTE, EDIT + SHARE · 20260821 */
+.home-schedule-summary { padding-top: 34px; padding-bottom: 28px; }
+.home-summary-heading { margin-bottom: 17px; display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.home-summary-heading .eyebrow { margin-bottom: 5px; }.home-summary-heading h2 { margin: 0; font-size: clamp(25px, 3vw, 38px); }
+.home-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.home-status-card { min-width: 0; min-height: 132px; padding: 16px; display: flex; align-items: flex-start; justify-content: flex-end; flex-direction: column; border: 1px solid #b9cad5; border-top: 4px solid var(--signal); color: var(--ink); background: rgba(248,253,254,.9); text-align: left; box-shadow: 4px 4px 0 rgba(7,20,61,.1); transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.home-status-card:nth-child(even) { border-top-color: var(--acid); }.home-status-card:hover, .home-status-card:focus-visible { transform: translate(-2px, -2px); border-color: var(--signal); background: #fff; }
+.home-status-card > span { margin-bottom: auto; color: var(--signal); font: 700 9px "DM Mono", monospace; letter-spacing: 1px; text-transform: uppercase; }
+.home-status-card strong { width: 100%; overflow: hidden; font: 800 19px/1.2 "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -.55px; text-overflow: ellipsis; white-space: nowrap; }
+.home-status-card small { width: 100%; margin-top: 6px; overflow: hidden; color: var(--muted); font-size: 10.5px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.home-status-card.is-live.is-active { color: #fff; border-color: var(--signal); background: linear-gradient(140deg, #07143d, #173b68); box-shadow: 4px 4px 0 var(--acid); }
+.home-status-card.is-live.is-active > span, .home-status-card.is-live.is-active small { color: var(--acid); }
+
+.reservation-note-field { position: relative; }.reservation-note-field > span { float: right; color: var(--muted); font-size: 10px; }.reservation-note-field > small { display: block; margin-top: 4px; color: var(--muted); font: 9px "DM Mono", monospace; text-align: right; }
+.my-reservation-note { margin-bottom: 4px !important; color: #31465f !important; font-family: "Gowun Dodum", sans-serif !important; white-space: pre-line; }
+.my-reservation-actions { display: flex; align-items: center; gap: 13px; }.cancel-button.is-edit { color: var(--signal); font-weight: 700; }
+.reservation-dialog { width: min(540px, calc(100% - 28px)); overflow-y: auto; }
+.reservation-dialog-note { margin: -10px 0 17px; padding: 10px 12px; border-left: 4px solid var(--signal); color: #263c58; background: #edf6f8; font-size: 12px; white-space: pre-line; }
+.reservation-dialog-note.is-empty { border-left-color: #b8c2cc; color: var(--muted); background: #f0f1ef; }
+.reservation-dialog-actions { margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.reservation-dialog-actions .button { min-width: 0; padding-inline: 8px; font-size: 10.5px; }
+.reservation-edit-form { margin-top: 16px; padding-top: 18px; border-top: 1px solid var(--line); }
+.reservation-edit-form .panel-heading { margin-bottom: 14px; }.reservation-edit-form textarea { min-height: 74px; }
+.reservation-edit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.reservation-edit-actions .button { width: 100%; }
+
+@media (max-width: 850px) {
+  .home-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .home-schedule-summary { padding-top: 24px; padding-bottom: 22px; }
+  .home-summary-heading { align-items: flex-start; }.home-summary-heading h2 { font-size: 25px; }.home-summary-heading .text-button { margin-top: 5px; white-space: nowrap; }
+  .home-status-grid { gap: 8px; }
+  .home-status-card { min-height: 116px; padding: 12px; box-shadow: 3px 3px 0 rgba(7,20,61,.1); }
+  .home-status-card strong { font-size: 15px; }.home-status-card small { font-size: 9px; white-space: normal; }
+  .reservation-dialog-actions { grid-template-columns: 1fr 1fr; }.reservation-dialog-actions .button:first-child { grid-column: 1 / -1; }
+  .reservation-edit-actions { grid-template-columns: 1fr; }
+}

@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260820.1";
+const APP_VERSION = "20260821.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -97,6 +97,7 @@ const state = {
   pendingLogoThumbnailDataUrl: null,
   logoOriginals: new Map(),
   liveReservations: [],
+  homeReservations: [],
   liveLoadPromise: null,
   trashAlertTimers: new Map(),
   reservations: [],
@@ -397,6 +398,10 @@ function renderRepeatReservationUi() {
   const firstDate = elements.reservationDate.value || todayInSeoul();
   const lastDate = addDays(firstDate, (repeatWeeks - 1) * 7);
   elements.repeatReservationSummary.textContent = `${humanDate(firstDate, true)}부터 ${humanDate(lastDate, true)}까지 한 달(4주) 동안 매주 · 총 4회`;
+}
+
+function renderReservationNoteCount() {
+  elements.reservationNoteCount.textContent = `${elements.reservationNote.value.length} / 120`;
 }
 function showTrashNotice(dateText, reservation = null, reminder = false) {
   const schedule = trashScheduleForDate(dateText);
@@ -701,10 +706,16 @@ function openAuth() {
 function applyRoomToControls() {
   const { openHour, closeHour } = state.room;
   const timeOption = (hour) => `<option value="${hour}">${pad(hour)}:00</option>`;
-  elements.startHour.innerHTML = Array.from({ length: closeHour - openHour }, (_, index) => timeOption(openHour + index)).join("");
-  elements.endHour.innerHTML = Array.from({ length: closeHour - openHour }, (_, index) => timeOption(openHour + index + 1)).join("");
+  const startOptions = Array.from({ length: closeHour - openHour }, (_, index) => timeOption(openHour + index)).join("");
+  const endOptions = Array.from({ length: closeHour - openHour }, (_, index) => timeOption(openHour + index + 1)).join("");
+  elements.startHour.innerHTML = startOptions;
+  elements.endHour.innerHTML = endOptions;
+  elements.reservationEditStartHour.innerHTML = startOptions;
+  elements.reservationEditEndHour.innerHTML = endOptions;
   elements.startHour.value = String(openHour);
   elements.endHour.value = String(Math.min(openHour + 1, closeHour));
+  elements.reservationEditStartHour.value = String(openHour);
+  elements.reservationEditEndHour.value = String(Math.min(openHour + 1, closeHour));
   const allHours = Array.from({ length: 25 }, (_, index) => timeOption(index)).join("");
   elements.openHour.innerHTML = allHours;
   elements.closeHour.innerHTML = allHours;
@@ -713,6 +724,7 @@ function applyRoomToControls() {
   elements.heroOpenHour.textContent = `${pad(openHour)}:00`;
   elements.heroCloseHour.textContent = `${pad(closeHour)}:00`;
   renderLiveTimetable();
+  renderHomeScheduleSummary();
 }
 
 function renderNotices() {
@@ -827,23 +839,74 @@ function renderLiveTimetable() {
     badge.textContent = "현재 예약 없음";
     badge.style.removeProperty("--live-color");
     renderMobileScheduleList();
+    renderHomeScheduleSummary();
     return;
   }
   badge.textContent = `${reservation.bandName} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00`;
   badge.style.setProperty("--live-color", String(reservation.bandColor || "#52c8d0"));
   renderMobileScheduleList();
+  renderHomeScheduleSummary();
+}
+
+function reservationDateTime(reservation, field = "startHour") {
+  return new Date(`${reservation.date}T00:00:00+09:00`).getTime() + (Number(reservation[field]) * 60 * 60 * 1000);
+}
+
+function homeReservationDateLabel(dateText) {
+  const today = todayInSeoul();
+  if (dateText === today) return "오늘";
+  if (dateText === addDays(today, 1)) return "내일";
+  return humanDate(dateText, true);
+}
+
+function renderHomeScheduleSummary() {
+  if (!elements.homeCurrentReservation) return;
+  const now = Date.now();
+  const today = todayInSeoul();
+  const reservations = state.homeReservations.slice()
+    .sort((a, b) => reservationDateTime(a) - reservationDateTime(b));
+  const current = reservations.find((reservation) => reservationDateTime(reservation) <= now && reservationDateTime(reservation, "endHour") > now);
+  const next = reservations.find((reservation) => reservationDateTime(reservation) > now);
+  const todayReservations = reservations.filter((reservation) => reservation.date === today);
+  const currentCard = elements.homeCurrentReservation.closest(".home-status-card");
+  currentCard?.classList.toggle("is-active", Boolean(current));
+  elements.homeCurrentReservation.textContent = current?.bandName || "현재 예약 없음";
+  elements.homeCurrentReservationTime.textContent = current
+    ? `${pad(current.startHour)}:00–${pad(current.endHour)}:00 이용 중`
+    : "지금은 합주실이 비어 있습니다.";
+  elements.homeNextReservation.textContent = next?.bandName || "예정 없음";
+  elements.homeNextReservationTime.textContent = next
+    ? `${homeReservationDateLabel(next.date)} · ${pad(next.startHour)}:00–${pad(next.endHour)}:00`
+    : "앞으로 7일간 예정된 예약이 없습니다.";
+  elements.homeTodayReservationCount.textContent = `${todayReservations.length}건`;
+
+  const nowParts = seoulNowParts();
+  let availableHours = 0;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const dateText = addDays(today, offset);
+    const firstHour = offset === 0 ? Math.max(Number(state.room.openHour), nowParts.hour + 1) : Number(state.room.openHour);
+    for (let hour = firstHour; hour < Number(state.room.closeHour); hour += 1) {
+      const occupied = reservations.some((reservation) => reservation.date === dateText && Number(reservation.startHour) <= hour && Number(reservation.endHour) > hour);
+      if (!occupied) availableHours += 1;
+    }
+  }
+  elements.homeWeekFreeHours.textContent = `${availableHours}시간`;
 }
 
 async function loadLiveReservations() {
   if (configMissing) return;
   if (state.liveLoadPromise) return state.liveLoadPromise;
   const today = todayInSeoul();
-  state.liveLoadPromise = call("listPublicReservations", { from: today, to: today })
+  state.liveLoadPromise = call("listPublicReservations", { from: today, to: addDays(today, 6) })
     .then((result) => {
-      state.liveReservations = Array.isArray(result.data?.reservations) ? result.data.reservations : [];
+      state.homeReservations = Array.isArray(result.data?.reservations) ? result.data.reservations : [];
+      state.liveReservations = state.homeReservations.filter((reservation) => reservation.date === today);
       renderLiveTimetable();
     })
-    .catch(() => renderLiveTimetable())
+    .catch(() => {
+      state.homeReservations = [];
+      renderLiveTimetable();
+    })
     .finally(() => { state.liveLoadPromise = null; });
   return state.liveLoadPromise;
 }
@@ -1004,7 +1067,7 @@ function renderMobileScheduleList() {
           <span class="mobile-schedule-band">
             ${isLive ? '<span class="mobile-live-label">NOW PLAYING</span>' : ""}
             <strong>${reservation.repeatCount > 1 ? "↻ " : ""}${escapeHtml(reservation.bandName)}</strong>
-            <span>${escapeHtml(trash.title)}</span>
+            <span>${escapeHtml(trash.title)}${reservation.note ? ` · ${escapeHtml(reservation.note)}` : ""}</span>
           </span>
         </button>`;
     }).join("") : '<p class="mobile-day-empty">예약된 합주가 없습니다.</p>';
@@ -1123,8 +1186,9 @@ function renderMyReservations() {
     <article class="my-reservation" style="--reservation-color:${escapeHtml(reservation.bandColor || "#7957E8")}">
       <strong>${escapeHtml(reservation.bandName)}${reservation.repeatCount > 1 ? ' <span class="repeat-badge">매주 반복</span>' : ""}</strong>
       <p>${humanDate(reservation.date, true)} · ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00${reservation.repeatCount > 1 ? ` · ${reservation.repeatIndex + 1}/${reservation.repeatCount}회` : ""}</p>
+      ${reservation.note ? `<p class="my-reservation-note">메모 · ${escapeHtml(reservation.note)}</p>` : ""}
       <p class="my-reservation-trash">${escapeHtml(trashSchedule.day)} 쓰레기 · ${escapeHtml(trashSchedule.title)}</p>
-      <button class="cancel-button" data-cancel-reservation="${reservation.id}">예약 취소</button>
+      <div class="my-reservation-actions"><button class="cancel-button is-edit" data-open-reservation="${reservation.id}">상세·수정</button><button class="cancel-button" data-cancel-reservation="${reservation.id}">예약 취소</button></div>
     </article>`;
   }).join("") : "<p class=\"empty-message\">예정된 예약이 없습니다.</p>";
   scheduleTrashAlerts();
@@ -1243,20 +1307,160 @@ function openReservationEntry() {
   setActiveTab("reservation");
   if (!state.profile) openAuth();
 }
+function reservationById(id) {
+  return [...state.reservations, ...state.monthReservations, ...state.homeReservations].find((item) => item.id === id);
+}
+
+function selectedDialogReservation() {
+  return reservationById(elements.reservationDialog.dataset.reservationId || "");
+}
+
+function setReservationEditOpen(isOpen) {
+  const reservation = selectedDialogReservation();
+  const canEdit = Boolean(reservation && canCancelReservation(reservation) && reservation.date >= todayInSeoul());
+  const editing = Boolean(isOpen && canEdit);
+  elements.reservationEditForm.classList.toggle("hidden", !editing);
+  elements.reservationDialogInfo.classList.toggle("hidden", editing);
+  elements.reservationDialogNote.classList.toggle("hidden", editing);
+  elements.reservationDialogTrash.classList.toggle("hidden", editing);
+  elements.reservationDialog.querySelector(".reservation-dialog-actions")?.classList.toggle("hidden", editing);
+  elements.reservationDialogCancelButton.classList.toggle("hidden", editing || !canCancelReservation(reservation));
+  if (!editing) return;
+  elements.reservationEditDate.value = reservation.date;
+  elements.reservationEditStartHour.value = String(reservation.startHour);
+  elements.reservationEditEndHour.value = String(reservation.endHour);
+  elements.reservationEditNote.value = String(reservation.note || "");
+  const isRepeating = Boolean(reservation.repeatGroupId && Number(reservation.repeatCount || 1) > 1);
+  elements.reservationEditScopeField.classList.toggle("hidden", !isRepeating);
+  elements.reservationEditScope.value = "single";
+  window.requestAnimationFrame(() => elements.reservationEditDate.focus());
+}
+
 function showReservation(id) {
-  const reservation = [...state.reservations, ...state.monthReservations].find((item) => item.id === id);
+  const reservation = reservationById(id);
   if (!reservation) return;
+  elements.reservationDialog.dataset.reservationId = id;
   elements.reservationDialogTitle.textContent = reservation.bandName;
   elements.reservationDialogInfo.textContent = `${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00부터 ${pad(reservation.endHour)}:00까지 예약되어 있습니다.${reservation.repeatCount > 1 ? ` · 매주 반복 ${reservation.repeatIndex + 1}/${reservation.repeatCount}` : ""}`;
+  elements.reservationDialogNote.textContent = reservation.note ? `메모 · ${reservation.note}` : "등록된 예약 메모가 없습니다.";
+  elements.reservationDialogNote.classList.toggle("is-empty", !reservation.note);
   elements.reservationDialogTrash.innerHTML = trashCompactMarkup(reservation.date);
   const canCancel = canCancelReservation(reservation);
+  const canEdit = canCancel && reservation.date >= todayInSeoul();
+  elements.reservationDialogEditButton.classList.toggle("hidden", !canEdit);
   elements.reservationDialogCancelButton.classList.toggle("hidden", !canCancel);
   elements.reservationDialogCancelButton.dataset.reservationId = canCancel ? id : "";
+  setReservationEditOpen(false);
   elements.reservationDialog.showModal();
 }
 
+function calendarTimestamp(dateText, hour) {
+  return new Date(`${dateText}T00:00:00+09:00`).getTime() + (Number(hour) * 60 * 60 * 1000);
+}
+
+function icsTimestamp(dateText, hour) {
+  return new Date(calendarTimestamp(dateText, hour)).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function escapeCalendarText(value) {
+  return String(value || "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+function reservationShareText(reservation) {
+  return `${reservation.bandName} · ${humanDate(reservation.date, true)} ${pad(reservation.startHour)}:00–${pad(reservation.endHour)}:00${reservation.note ? `\n메모: ${reservation.note}` : ""}`;
+}
+
+function downloadReservationCalendar() {
+  const reservation = selectedDialogReservation();
+  if (!reservation) return;
+  const scheduleUrl = new URL("./#schedule", window.location.href).href;
+  const description = `${reservation.note ? `${reservation.note}\n` : ""}Soundcheck에서 예약 확인: ${scheduleUrl}`;
+  const calendar = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Soundcheck//Kkalungsalong Reservation//KO",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${escapeCalendarText(reservation.id)}@soundcheck`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
+    `DTSTART:${icsTimestamp(reservation.date, reservation.startHour)}`,
+    `DTEND:${icsTimestamp(reservation.date, reservation.endHour)}`,
+    `SUMMARY:${escapeCalendarText(`깔룽살롱 합주실 · ${reservation.bandName}`)}`,
+    `DESCRIPTION:${escapeCalendarText(description)}`,
+    "LOCATION:깔룽살롱 합주실",
+    `URL:${escapeCalendarText(scheduleUrl)}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const blob = new Blob([calendar], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `soundcheck-${reservation.date}-${pad(reservation.startHour)}.ics`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("휴대전화 캘린더에 추가할 일정 파일을 만들었습니다.");
+}
+
+async function shareReservation() {
+  const reservation = selectedDialogReservation();
+  if (!reservation) return;
+  const shareData = {
+    title: `깔룽살롱 합주실 · ${reservation.bandName}`,
+    text: reservationShareText(reservation),
+    url: new URL("./#schedule", window.location.href).href,
+  };
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+    showToast("예약 내용을 복사했습니다.");
+  } catch (error) {
+    showToast("공유 기능을 사용할 수 없습니다.", true);
+  }
+}
+
+async function handleReservationEdit(event) {
+  event.preventDefault();
+  const reservation = selectedDialogReservation();
+  if (!reservation || !canCancelReservation(reservation)) return;
+  const date = elements.reservationEditDate.value;
+  const startHour = Number(elements.reservationEditStartHour.value);
+  const endHour = Number(elements.reservationEditEndHour.value);
+  if (endHour <= startHour) return showToast("종료 시간은 시작 시간보다 뒤여야 합니다.", true);
+  const submitButton = elements.reservationEditForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    const result = await call("updateReservation", {
+      reservationId: reservation.id,
+      date,
+      startHour,
+      endHour,
+      note: elements.reservationEditNote.value.trim(),
+      scope: elements.reservationEditScopeField.classList.contains("hidden") ? "single" : elements.reservationEditScope.value,
+    });
+    elements.reservationDialog.close();
+    await Promise.all([loadMonthReservations(), loadLiveReservations()]);
+    const updatedCount = Number(result.data?.updatedCount || 1);
+    showToast(updatedCount > 1 ? `남아 있는 반복 예약 ${updatedCount}회를 수정했습니다.` : "예약을 수정했습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
 async function cancelReservationById(id, { closeDialog = false } = {}) {
-  const reservation = [...state.reservations, ...state.monthReservations].find((item) => item.id === id);
+  const reservation = reservationById(id);
   if (!reservation || !canCancelReservation(reservation)) {
     showToast("자신의 밴드 예약만 취소할 수 있습니다.", true);
     return;
@@ -1270,11 +1474,12 @@ async function cancelReservationById(id, { closeDialog = false } = {}) {
     await call("cancelReservation", { reservationId: id });
     state.reservations = state.reservations.filter((item) => item.id !== id);
     state.monthReservations = state.monthReservations.filter((item) => item.id !== id);
+    state.homeReservations = state.homeReservations.filter((item) => item.id !== id);
     renderCalendar();
     renderMonthCalendar();
     renderMyReservations();
     if (closeDialog && elements.reservationDialog.open) elements.reservationDialog.close();
-    await loadMonthReservations();
+    await Promise.all([loadMonthReservations(), loadLiveReservations()]);
     showToast("예약을 취소했습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -1327,6 +1532,7 @@ async function handleReservation(event) {
       startHour,
       endHour,
       repeatWeeks,
+      note: elements.reservationNote.value.trim(),
       ...(state.profile.role === "main_admin" ? { bandId } : {}),
     });
     const band = state.bands.find((item) => item.id === bandId);
@@ -1337,11 +1543,14 @@ async function handleReservation(event) {
       date,
       startHour,
       endHour,
+      note: elements.reservationNote.value.trim(),
       createdBy: auth.currentUser?.uid || "",
     };
     showTrashNotice(date, createdReservation, false);
     scheduleTrashReminder(createdReservation);
-await loadMonthReservations();
+    elements.reservationNote.value = "";
+    elements.reservationNoteCount.textContent = "0 / 120";
+    await Promise.all([loadMonthReservations(), loadLiveReservations()]);
     showToast(repeatWeeks > 1 ? "한 달 동안 매주 같은 시간으로 총 4회 예약했습니다." : "예약이 완료되었습니다. 해당 요일의 쓰레기 배출 안내를 확인해 주세요.");
   } catch (error) {
     showToast(errorMessage(error), true);
@@ -1843,9 +2052,16 @@ function bindEvents() {
   elements.closeAuthButton.addEventListener("click", () => elements.authDialog.close());
   elements.closeReservationButton.addEventListener("click", () => elements.reservationDialog.close());
   elements.reservationDialog.addEventListener("close", () => {
+    elements.reservationDialog.dataset.reservationId = "";
     elements.reservationDialogCancelButton.dataset.reservationId = "";
     elements.reservationDialogCancelButton.classList.add("hidden");
+    setReservationEditOpen(false);
   });
+  elements.reservationDialogEditButton.addEventListener("click", () => setReservationEditOpen(true));
+  elements.reservationEditCloseButton.addEventListener("click", () => setReservationEditOpen(false));
+  elements.reservationEditForm.addEventListener("submit", handleReservationEdit);
+  elements.reservationCalendarButton.addEventListener("click", downloadReservationCalendar);
+  elements.reservationShareButton.addEventListener("click", shareReservation);
   elements.reservationDialogCancelButton.addEventListener("click", () => {
     const id = elements.reservationDialogCancelButton.dataset.reservationId;
     if (id) cancelReservationById(id, { closeDialog: true });
@@ -1896,6 +2112,7 @@ function bindEvents() {
     renderCalendar();
   });
   elements.reservationDate.addEventListener("change", () => { renderReservationTrashPreview(); renderRepeatReservationUi(); });
+  elements.reservationNote.addEventListener("input", renderReservationNoteCount);
   elements.repeatReservation.addEventListener("change", renderRepeatReservationUi);
   elements.repeatWeeks.addEventListener("change", renderRepeatReservationUi);
   elements.equipmentReportForm.addEventListener("submit", handleEquipmentReport);
@@ -1927,6 +2144,11 @@ function bindEvents() {
   elements.startHour.addEventListener("change", () => {
     if (Number(elements.endHour.value) <= Number(elements.startHour.value)) elements.endHour.value = String(Number(elements.startHour.value) + 1);
   });
+  elements.reservationEditStartHour.addEventListener("change", () => {
+    if (Number(elements.reservationEditEndHour.value) <= Number(elements.reservationEditStartHour.value)) {
+      elements.reservationEditEndHour.value = String(Number(elements.reservationEditStartHour.value) + 1);
+    }
+  });
   elements.noticeList.addEventListener("click", async (event) => {
     const id = event.target.dataset.deleteNotice;
     if (!id || !window.confirm("이 공지를 삭제할까요?")) return;
@@ -1955,6 +2177,8 @@ function bindEvents() {
     if (target) openCalendarReservation(target.dataset.reserveDate, target.dataset.reserveHour);
   });
   elements.myReservationList.addEventListener("click", async (event) => {
+    const openId = event.target.dataset.openReservation;
+    if (openId) return showReservation(openId);
     const id = event.target.dataset.cancelReservation;
     if (id) await cancelReservationById(id);
   });
@@ -1980,10 +2204,13 @@ function initialise() {
   elements.statsMonth.value = monthForDate(today);
   elements.reservationDate.value = today;
   elements.reservationDate.min = today;
+  elements.reservationEditDate.min = today;
   renderTrashSchedule();
   renderReservationTrashPreview();
   renderRepeatReservationUi();
+  renderReservationNoteCount();
   renderMonthCalendar();
+  renderHomeScheduleSummary();
   updateTrashNotificationUi();
   applyRoomToControls();
   bindEvents();

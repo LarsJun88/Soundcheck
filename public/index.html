@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260820.1" />
+    <meta name="soundcheck-version" content="20260821.1" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260820.1" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260821.1" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260820.1" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260820.1" />
+    <link rel="stylesheet" href="./styles.css?v=20260821.1" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260821.1" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -56,6 +56,16 @@
           <div class="room-hours"><span>OPEN</span><strong id="heroOpenHour">09:00</strong><i></i><strong id="heroCloseHour">23:00</strong><span>CLOSE</span></div>
           <p>한 시간 단위로 예약할 수 있습니다.<br />다음 팀을 위해 정시 퇴실을 지켜 주세요.</p>
         </aside>
+      </section>
+
+      <section id="homeScheduleSummary" class="home-schedule-summary page-width" data-tab-view="home" aria-labelledby="homeScheduleSummaryTitle">
+        <div class="home-summary-heading"><div><p class="eyebrow">NOW &amp; NEXT</p><h2 id="homeScheduleSummaryTitle">합주실 이용 현황</h2></div><button class="text-button" type="button" data-open-tab="schedule">전체 일정 보기</button></div>
+        <div class="home-status-grid" aria-live="polite">
+          <button class="home-status-card is-live" type="button" data-open-tab="schedule"><span>현재 합주</span><strong id="homeCurrentReservation">확인 중</strong><small id="homeCurrentReservationTime">현재 이용 팀을 불러오고 있습니다.</small></button>
+          <button class="home-status-card" type="button" data-open-tab="schedule"><span>다음 예약</span><strong id="homeNextReservation">확인 중</strong><small id="homeNextReservationTime">다음 일정을 불러오고 있습니다.</small></button>
+          <button class="home-status-card" type="button" data-open-tab="schedule"><span>오늘 예약</span><strong id="homeTodayReservationCount">–</strong><small>오늘 예정된 전체 합주</small></button>
+          <button class="home-status-card" type="button" data-open-tab="schedule"><span>이번 주 빈 시간</span><strong id="homeWeekFreeHours">–</strong><small>오늘부터 7일간 예약 가능한 시간</small></button>
+        </div>
       </section>
 
       <section id="homeDashboard" class="home-dashboard page-width" data-tab-view="home" aria-label="빠른 메뉴">
@@ -168,6 +178,10 @@
                 <select id="endHour" required></select>
               </label>
             </div>
+            <label class="reservation-note-field">예약 메모 <span>선택</span>
+              <textarea id="reservationNote" maxlength="120" placeholder="예: 신곡 합주, 촬영 예정, 드럼 세팅 유지"></textarea>
+              <small id="reservationNoteCount">0 / 120</small>
+            </label>
             <label class="repeat-toggle"><input id="repeatReservation" type="checkbox" /><span><strong>매주 반복 예약</strong><small>한 달 동안 같은 요일과 시간으로 총 4회 예약합니다.</small></span></label>
             <div id="repeatWeeksField" class="repeat-month-field hidden"><span>반복 기간</span><strong>한 달 · 총 4회</strong><input id="repeatWeeks" type="hidden" value="4" /></div>
             <p id="repeatReservationSummary" class="repeat-summary hidden"></p>
@@ -344,7 +358,26 @@
       <p class="eyebrow">RESERVATION</p>
       <h2 id="reservationDialogTitle">예약 상세</h2>
       <p id="reservationDialogInfo" class="dialog-copy"></p>
+      <p id="reservationDialogNote" class="reservation-dialog-note"></p>
       <div id="reservationDialogTrash" class="reservation-dialog-trash"></div>
+      <div class="reservation-dialog-actions">
+        <button id="reservationDialogEditButton" class="button button-light hidden" type="button">예약 수정</button>
+        <button id="reservationCalendarButton" class="button button-light" type="button">캘린더에 추가</button>
+        <button id="reservationShareButton" class="button button-light" type="button">일정 공유</button>
+      </div>
+      <form id="reservationEditForm" class="reservation-edit-form hidden">
+        <div class="panel-heading"><h3>예약 수정</h3><span>저장 전 확인</span></div>
+        <label>날짜<input id="reservationEditDate" type="date" required /></label>
+        <div class="form-row">
+          <label>시작<select id="reservationEditStartHour" required></select></label>
+          <label>종료<select id="reservationEditEndHour" required></select></label>
+        </div>
+        <label>예약 메모<textarea id="reservationEditNote" maxlength="120" placeholder="합주 목적이나 전달 사항을 입력하세요."></textarea></label>
+        <label id="reservationEditScopeField" class="hidden">반복 예약 수정 범위
+          <select id="reservationEditScope"><option value="single">이번 일정만 수정</option><option value="series">남아 있는 반복 일정 전체 수정</option></select>
+        </label>
+        <div class="reservation-edit-actions"><button class="button button-primary" type="submit">변경 저장</button><button id="reservationEditCloseButton" class="button button-light" type="button">수정 취소</button></div>
+      </form>
       <button id="reservationDialogCancelButton" class="button button-danger form-submit hidden" type="button">이 예약 취소하기</button>
     </dialog>
 
@@ -367,6 +400,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260820.1"></script>
+    <script type="module" src="./app.js?v=20260821.1"></script>
   </body>
 </html>

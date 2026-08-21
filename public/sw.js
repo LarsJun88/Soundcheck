@@ -10,16 +10,16 @@ try {
   messaging = null;
 }
 const SHELL_CACHE_PREFIX = "soundcheck-shell-";
-const SHELL_CACHE = "soundcheck-shell-v25";
+const SHELL_CACHE = "soundcheck-shell-v26";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=20260820.1",
-  "./rock-theme.css?v=20260820.1",
-  "./app.js?v=20260820.1",
+  "./styles.css?v=20260821.1",
+  "./rock-theme.css?v=20260821.1",
+  "./app.js?v=20260821.1",
   "./firebase-config.js",
   "./firebase-sw-config.js",
-  "./manifest.webmanifest?v=20260820.1",
+  "./manifest.webmanifest?v=20260821.1",
   "./icons/soundcheck-32.png",
   "./icons/soundcheck-180.png",
   "./icons/soundcheck-192.png",

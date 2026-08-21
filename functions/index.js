@@ -24,6 +24,7 @@ const LOGO_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+
 const PUSH_TOKEN_PATTERN = /^[A-Za-z0-9_:.-]{20,4096}$/;
 const EQUIPMENT_PHOTO_DATA_URL_PATTERN = /^data:image\/(?:jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const MAX_EQUIPMENT_PHOTO_DATA_URL_LENGTH = 240000;
+const MAX_RESERVATION_NOTE_LENGTH = 120;
 const EQUIPMENT_REPORT_STATUSES = new Set(["reported", "checking", "repairing", "resolved"]);
 const INVALID_PUSH_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
@@ -146,6 +147,20 @@ function validateReservationInput(data) {
     badRequest("지난 날짜에는 예약할 수 없습니다.");
   }
   return { date, startHour, endHour };
+}
+
+function validateReservationNote(value) {
+  const note = String(value || "").trim();
+  if (note.length > MAX_RESERVATION_NOTE_LENGTH) {
+    badRequest(`예약 메모는 ${MAX_RESERVATION_NOTE_LENGTH}자까지 입력할 수 있습니다.`);
+  }
+  return note;
+}
+
+function dateDifferenceInDays(fromDate, toDate) {
+  const from = new Date(`${fromDate}T12:00:00+09:00`).getTime();
+  const to = new Date(`${toDate}T12:00:00+09:00`).getTime();
+  return Math.round((to - from) / 86400000);
 }
 
 function validateReservationRangeInput(data) {
@@ -485,6 +500,7 @@ exports.listPublicReservations = onCall(async (request) => {
       repeatGroupId: String(reservation.repeatGroupId || ""),
       repeatIndex: Number(reservation.repeatIndex || 0),
       repeatCount: Number(reservation.repeatCount || 1),
+      note: String(reservation.note || "").slice(0, MAX_RESERVATION_NOTE_LENGTH),
     };
   });
   return { reservations };
@@ -830,6 +846,7 @@ exports.createReservation = onCall(async (request) => {
   }
 
   const repeatWeeks = Number(request.data?.repeatWeeks || 1);
+  const note = validateReservationNote(request.data?.note);
   if (!Number.isInteger(repeatWeeks) || ![1, 4].includes(repeatWeeks)) badRequest("반복 예약은 한 달(4주) 단위로만 가능합니다.");
   const dates = Array.from({ length: repeatWeeks }, (_, index) => addDaysToDateText(date, index * 7));
   const bandRef = db.collection("bands").doc(bandId);
@@ -877,6 +894,7 @@ exports.createReservation = onCall(async (request) => {
         repeatGroupId,
         repeatIndex,
         repeatCount: repeatWeeks,
+        note,
         createdBy: auth.uid,
         createdByName: profile.displayName,
         createdAt: FieldValue.serverTimestamp(),
@@ -902,6 +920,154 @@ exports.createReservation = onCall(async (request) => {
   }).catch((error) => console.error("Could not send reservation confirmation push", error));
 
   return { reservationId: reservationRefs[0].id, reservationIds: reservationRefs.map((reference) => reference.id), repeatCount: repeatWeeks };
+});
+exports.updateReservation = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const profile = await getProfile(auth.uid);
+  const reservationId = String(request.data?.reservationId || "");
+  if (!reservationId) badRequest("수정할 예약 정보가 없습니다.");
+  const { date, startHour, endHour } = validateReservationInput(request.data || {});
+  const note = validateReservationNote(request.data?.note);
+  const requestedScope = String(request.data?.scope || "single");
+  if (!["single", "series"].includes(requestedScope)) badRequest("반복 예약 수정 범위를 확인해 주세요.");
+
+  const targetRef = db.collection("reservations").doc(reservationId);
+  const targetSnapshot = await targetRef.get();
+  if (!targetSnapshot.exists || targetSnapshot.data().status !== "confirmed") {
+    throw new HttpsError("not-found", "수정할 활성 예약을 찾지 못했습니다.");
+  }
+  const target = targetSnapshot.data();
+  if (profile.role !== "main_admin" && target.bandId !== profile.bandId) {
+    throw new HttpsError("permission-denied", "자신의 밴드 예약만 수정할 수 있습니다.");
+  }
+  if (String(target.date || "") < dateInSeoul()) {
+    throw new HttpsError("failed-precondition", "지난 예약은 수정할 수 없습니다.");
+  }
+
+  const editSeries = requestedScope === "series" && target.repeatGroupId && Number(target.repeatCount || 1) > 1;
+  let sourceSnapshots = [targetSnapshot];
+  if (editSeries) {
+    const seriesSnapshot = await db.collection("reservations")
+      .where("repeatGroupId", "==", target.repeatGroupId)
+      .get();
+    sourceSnapshots = seriesSnapshot.docs.filter((snapshot) => {
+      const reservation = snapshot.data();
+      return reservation.status === "confirmed" && String(reservation.date || "") >= dateInSeoul();
+    });
+  }
+  if (!sourceSnapshots.length) throw new HttpsError("not-found", "수정할 예약을 찾지 못했습니다.");
+
+  const dateOffset = editSeries ? dateDifferenceInDays(target.date, date) : 0;
+  const plans = sourceSnapshots.map((snapshot) => {
+    const reservation = snapshot.data();
+    if (reservation.bandId !== target.bandId) {
+      throw new HttpsError("failed-precondition", "반복 예약 정보가 올바르지 않습니다.");
+    }
+    const nextDate = editSeries ? addDaysToDateText(reservation.date, dateOffset) : date;
+    validateReservationInput({ date: nextDate, startHour, endHour });
+    return {
+      id: snapshot.id,
+      ref: snapshot.ref,
+      originalDate: reservation.date,
+      originalStartHour: Number(reservation.startHour),
+      originalEndHour: Number(reservation.endHour),
+      nextDate,
+      bandId: reservation.bandId,
+      repeatGroupId: String(reservation.repeatGroupId || ""),
+    };
+  });
+
+  const roomSnapshot = await db.collection("settings").doc("room").get();
+  const room = roomSnapshot.exists ? roomSnapshot.data() : DEFAULT_ROOM_SETTINGS;
+  if (room.slotMinutes !== 60 || startHour < room.openHour || endHour > room.closeHour) {
+    throw new HttpsError("failed-precondition", "운영 시간 안에서 한 시간 단위로 예약해 주세요.");
+  }
+
+  await db.runTransaction(async (transaction) => {
+    const freshReservations = await transaction.getAll(...plans.map((plan) => plan.ref));
+    freshReservations.forEach((snapshot, index) => {
+      const plan = plans[index];
+      const reservation = snapshot.data() || {};
+      if (!snapshot.exists || reservation.status !== "confirmed"
+        || reservation.date !== plan.originalDate
+        || Number(reservation.startHour) !== plan.originalStartHour
+        || Number(reservation.endHour) !== plan.originalEndHour) {
+        throw new HttpsError("aborted", "예약 정보가 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+      }
+    });
+
+    const oldEntries = plans.flatMap((plan) => Array.from(
+      { length: plan.originalEndHour - plan.originalStartHour },
+      (_, index) => ({
+        plan,
+        hour: plan.originalStartHour + index,
+        ref: db.collection("scheduleSlots").doc(slotId(plan.originalDate, plan.originalStartHour + index)),
+      }),
+    ));
+    const newEntries = plans.flatMap((plan) => Array.from(
+      { length: endHour - startHour },
+      (_, index) => ({
+        plan,
+        hour: startHour + index,
+        ref: db.collection("scheduleSlots").doc(slotId(plan.nextDate, startHour + index)),
+      }),
+    ));
+    const slotRefsByPath = new Map([...oldEntries, ...newEntries].map((entry) => [entry.ref.path, entry.ref]));
+    const slotRefs = [...slotRefsByPath.values()];
+    const slotSnapshots = await transaction.getAll(...slotRefs);
+    const slotByPath = new Map(slotSnapshots.map((snapshot) => [snapshot.ref.path, snapshot]));
+    const editedIds = new Set(plans.map((plan) => plan.id));
+    const conflictingDates = [...new Set(newEntries.map((entry) => {
+      const snapshot = slotByPath.get(entry.ref.path);
+      return snapshot?.exists && !editedIds.has(String(snapshot.data().reservationId || "")) ? entry.plan.nextDate : "";
+    }).filter(Boolean))];
+    if (conflictingDates.length) {
+      throw new HttpsError("already-exists", `${conflictingDates.map(reservationDateLabel).join(", ")}에 이미 다른 예약이 있습니다.`);
+    }
+
+    const nextPaths = new Set(newEntries.map((entry) => entry.ref.path));
+    oldEntries.forEach((entry) => {
+      const snapshot = slotByPath.get(entry.ref.path);
+      if (!nextPaths.has(entry.ref.path) && snapshot?.exists && editedIds.has(String(snapshot.data().reservationId || ""))) {
+        transaction.delete(entry.ref);
+      }
+    });
+    plans.forEach((plan) => transaction.update(plan.ref, {
+      date: plan.nextDate,
+      startHour,
+      endHour,
+      startAt: Timestamp.fromDate(parseReservationDate(plan.nextDate, startHour)),
+      endAt: Timestamp.fromDate(parseReservationDate(plan.nextDate, endHour)),
+      note,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: auth.uid,
+    }));
+    newEntries.forEach((entry) => transaction.set(entry.ref, {
+      reservationId: entry.plan.id,
+      date: entry.plan.nextDate,
+      hour: entry.hour,
+      bandId: entry.plan.bandId,
+      repeatGroupId: entry.plan.repeatGroupId,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true }));
+  });
+
+  const reminderBatch = db.batch();
+  plans.forEach((plan) => PUSH_REMINDER_DEFINITIONS.forEach((definition) => {
+    reminderBatch.delete(db.collection("pushReminderDeliveries").doc(`${plan.id}_${definition.key}`));
+  }));
+  await reminderBatch.commit();
+
+  await sendPushToBand(target.bandId, {
+    title: plans.length > 1 ? "합주실 반복 예약 변경" : "합주실 예약 변경",
+    body: `${target.bandName} · ${reservationDateLabel(date)} ${displayTime(startHour)}–${displayTime(endHour)}${plans.length > 1 ? ` · ${plans.length}회 반영` : ""}`,
+    kind: "reservation_updated",
+    reservationId,
+    url: "./#schedule",
+    urgent: true,
+  }).catch((error) => console.error("Could not send reservation update push", error));
+
+  return { updated: true, updatedCount: plans.length };
 });
 exports.cancelReservation = onCall(async (request) => {
   const auth = requireAuth(request);
