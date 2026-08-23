@@ -179,6 +179,18 @@ function validateAvailabilityDateRange(data) {
   return Array.from({ length: dayDifference + 1 }, (_, index) => addDaysToDateText(from, index));
 }
 
+async function confirmedReservationDates(from, to) {
+  if (!from || !to || to < from) return new Set();
+  const snapshot = await db.collection("reservations")
+    .where("status", "==", "confirmed")
+    .where("date", ">=", from)
+    .where("date", "<=", to)
+    .orderBy("date")
+    .orderBy("startHour")
+    .get();
+  return new Set(snapshot.docs.map((item) => String(item.data().date || "")).filter(Boolean));
+}
+
 function validateReservationRangeInput(data) {
   const from = String(data.from || dateInSeoul());
   const to = String(data.to || from);
@@ -404,17 +416,18 @@ exports.listMemberRoster = onCall(async (request) => {
 exports.createAvailabilityPoll = onCall(async (request) => {
   const auth = requireAuth(request);
   const profile = await getProfile(auth.uid);
+  if (profile.role !== "band_admin" || !profile.bandId) {
+    throw new HttpsError("permission-denied", "밴드 멤버만 날짜 조율을 만들 수 있습니다.");
+  }
   const title = String(request.data?.title || "").trim();
   if (title.length < 2 || title.length > MAX_AVAILABILITY_POLL_TITLE_LENGTH) {
     badRequest(`조율 제목은 2~${MAX_AVAILABILITY_POLL_TITLE_LENGTH}자로 입력해 주세요.`);
   }
-  const dates = validateAvailabilityDateRange(request.data || {});
-  let bandId = String(request.data?.bandId || "");
-  if (profile.role === "band_admin") {
-    bandId = String(profile.bandId || "");
-  } else if (profile.role !== "main_admin" || !bandId) {
-    throw new HttpsError("permission-denied", "조율을 만들 밴드를 확인해 주세요.");
-  }
+  const requestedDates = validateAvailabilityDateRange(request.data || {});
+  const reservedDates = await confirmedReservationDates(requestedDates[0], requestedDates[requestedDates.length - 1]);
+  const dates = requestedDates.filter((date) => !reservedDates.has(date));
+  if (!dates.length) badRequest("선택한 기간은 모든 날짜에 이미 예약이 있습니다. 다른 기간을 선택해 주세요.");
+  const bandId = String(profile.bandId);
 
   const bandSnapshot = await db.collection("bands").doc(bandId).get();
   if (!bandSnapshot.exists || bandSnapshot.data().active === false) {
@@ -438,13 +451,22 @@ exports.createAvailabilityPoll = onCall(async (request) => {
 exports.listAvailabilityPolls = onCall(async (request) => {
   const auth = requireAuth(request);
   const profile = await getProfile(auth.uid);
-  const pollsSnapshot = profile.role === "main_admin"
-    ? await db.collection("availabilityPolls").get()
-    : await db.collection("availabilityPolls").where("bandId", "==", String(profile.bandId || "")).get();
+  if (profile.role !== "band_admin" || !profile.bandId) {
+    throw new HttpsError("permission-denied", "해당 밴드 멤버만 날짜 조율을 볼 수 있습니다.");
+  }
+  const pollsSnapshot = await db.collection("availabilityPolls")
+    .where("bandId", "==", String(profile.bandId))
+    .get();
   const pollDocs = pollsSnapshot.docs
     .filter((snapshot) => snapshot.data().status === "open")
     .sort((a, b) => (b.data().createdAt?.toMillis?.() || 0) - (a.data().createdAt?.toMillis?.() || 0))
     .slice(0, 60);
+  const allPollDates = pollDocs.flatMap((snapshot) => (
+    Array.isArray(snapshot.data().dates) ? snapshot.data().dates.map(String) : []
+  )).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+  const reservedDates = allPollDates.length
+    ? await confirmedReservationDates(allPollDates[0], allPollDates[allPollDates.length - 1])
+    : new Set();
   const bandIds = [...new Set(pollDocs.map((snapshot) => String(snapshot.data().bandId || "")).filter(Boolean))];
   const memberSnapshots = await Promise.all(bandIds.map((bandId) => (
     db.collection("users").where("bandId", "==", bandId).get()
@@ -455,7 +477,9 @@ exports.listAvailabilityPolls = onCall(async (request) => {
 
   const polls = await Promise.all(pollDocs.map(async (snapshot) => {
     const poll = snapshot.data();
-    const dates = Array.isArray(poll.dates) ? poll.dates.map(String).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)) : [];
+    const dates = Array.isArray(poll.dates)
+      ? poll.dates.map(String).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date) && !reservedDates.has(date))
+      : [];
     const members = membersByBand.get(String(poll.bandId || "")) || [];
     const memberIds = new Set(members.map((member) => member.id));
     const responsesSnapshot = await snapshot.ref.collection("responses").get();
@@ -514,11 +538,15 @@ exports.submitAvailabilityResponse = onCall(async (request) => {
   if (String(poll.bandId || "") !== String(profile.bandId || "")) {
     throw new HttpsError("permission-denied", "자신의 밴드 날짜 조율에만 응답할 수 있습니다.");
   }
-  const pollDates = Array.isArray(poll.dates) ? poll.dates.map(String) : [];
+  const storedPollDates = Array.isArray(poll.dates) ? poll.dates.map(String) : [];
+  const reservedDates = storedPollDates.length
+    ? await confirmedReservationDates(storedPollDates[0], storedPollDates[storedPollDates.length - 1])
+    : new Set();
+  const pollDates = storedPollDates.filter((date) => !reservedDates.has(date));
   const requestedDates = Array.isArray(request.data?.availableDates) ? request.data.availableDates.map(String) : [];
   const availableDates = [...new Set(requestedDates)];
   if (availableDates.some((date) => !pollDates.includes(date))) {
-    badRequest("선택한 가능 날짜를 확인해 주세요.");
+    badRequest("선택한 날짜에 이미 예약이 있습니다. 조율 화면을 새로고침해 주세요.");
   }
   await pollRef.collection("responses").doc(auth.uid).set({
     availableDates,

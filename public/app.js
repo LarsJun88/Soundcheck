@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260823.1";
+const APP_VERSION = "20260823.2";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -1254,15 +1254,21 @@ function renderAvailabilityPolls() {
         ${poll.canRespond ? `
           <div class="availability-response-panel">
             <div class="availability-response-heading"><strong>내가 가능한 날짜</strong><span>가능한 날짜를 모두 체크하세요.</span></div>
-            <div class="availability-date-grid">${dateOptions}</div>
-            <button class="button button-primary availability-save-button" type="button" data-save-availability="${escapeHtml(poll.id)}">${poll.hasResponded ? "내 응답 수정" : "가능 날짜 저장"}</button>
+            ${dates.length ? `<div class="availability-date-grid">${dateOptions}</div>
+            <button class="button button-primary availability-save-button" type="button" data-save-availability="${escapeHtml(poll.id)}">${poll.hasResponded ? "내 응답 수정" : "가능 날짜 저장"}</button>` : '<p class="availability-no-dates">후보 날짜가 모두 예약되어 선택할 수 없습니다.</p>'}
           </div>` : ""}
       </article>`;
   }).join("");
 }
 
 async function loadAvailabilityPolls() {
-  if (!state.profile || state.availabilityLoading) return;
+  if (!state.profile || state.profile.role !== "band_admin" || !state.profile.bandId) {
+    state.availabilityPolls = [];
+    state.availabilityLoading = false;
+    renderAvailabilityPolls();
+    return;
+  }
+  if (state.availabilityLoading) return;
   state.availabilityLoading = true;
   renderAvailabilityPolls();
   try {
@@ -1292,6 +1298,7 @@ function syncAvailabilityDateRange() {
 async function handleAvailabilityPollCreate(event) {
   event.preventDefault();
   if (!state.profile) return openAuth();
+  if (state.profile.role !== "band_admin" || !state.profile.bandId) return showToast("밴드 멤버만 날짜 조율을 만들 수 있습니다.", true);
   const submitButton = elements.availabilityPollForm.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   try {
@@ -1299,7 +1306,6 @@ async function handleAvailabilityPollCreate(event) {
       title: elements.availabilityPollTitle.value.trim(),
       from: elements.availabilityFromDate.value,
       to: elements.availabilityToDate.value,
-      ...(state.profile.role === "main_admin" ? { bandId: elements.availabilityBand.value } : {}),
     });
     elements.availabilityPollTitle.value = "";
     await loadAvailabilityPolls();
@@ -1335,16 +1341,13 @@ function renderBands() {
   }
   const activeBands = state.bands.filter((band) => band.active);
   const reservationValue = elements.reservationBand.value;
-  const availabilityValue = elements.availabilityBand.value;
   const logoValue = elements.logoBand.value;
   const deleteValue = elements.deleteBand.value;
   const options = activeBands.map((band) => `<option value="${band.id}">${escapeHtml(band.name)}</option>`).join("");
   elements.reservationBand.innerHTML = options;
-  elements.availabilityBand.innerHTML = options || '<option value="">조율할 밴드 없음</option>';
   elements.logoBand.innerHTML = options;
   elements.deleteBand.innerHTML = options || '<option value="">삭제할 밴드 없음</option>';
   if (activeBands.some((band) => band.id === reservationValue)) elements.reservationBand.value = reservationValue;
-  if (activeBands.some((band) => band.id === availabilityValue)) elements.availabilityBand.value = availabilityValue;
   if (activeBands.some((band) => band.id === logoValue)) elements.logoBand.value = logoValue;
   if (activeBands.some((band) => band.id === deleteValue)) elements.deleteBand.value = deleteValue;
   renderBandLogoPreview();
@@ -1356,6 +1359,7 @@ function renderProfile() {
   elements.memberAreaAnchor.after(elements.memberArea);
   elements.memberArea.classList.remove("member-area-priority");
   const isActive = Boolean(profile);
+  const canUseAvailability = Boolean(profile?.role === "band_admin" && profile.bandId);
   elements.profileChip.classList.toggle("hidden", !isActive);
   elements.signOutButton.classList.toggle("hidden", !state.firebaseUser);
   const needsActivation = Boolean(state.firebaseUser && !profile);
@@ -1366,11 +1370,16 @@ function renderProfile() {
   elements.equipmentArea.classList.toggle("hidden", !isActive);
   elements.equipmentTabGuest.classList.toggle("hidden", isActive);
   elements.availabilityGuest.classList.toggle("hidden", isActive);
-  elements.availabilityMember.classList.toggle("hidden", !isActive);
-  elements.availabilityRefreshButton.classList.toggle("hidden", !isActive);
+  elements.availabilityRestricted.classList.toggle("hidden", !isActive || canUseAvailability);
+  elements.availabilityMember.classList.toggle("hidden", !canUseAvailability);
+  elements.availabilityRefreshButton.classList.toggle("hidden", !canUseAvailability);
   elements.adminArea.classList.toggle("hidden", profile?.role !== "main_admin");
   elements.reservationBandField.classList.toggle("hidden", profile?.role !== "main_admin");
-  elements.availabilityBandField.classList.toggle("hidden", profile?.role !== "main_admin");
+  if (!canUseAvailability) {
+    state.availabilityPolls = [];
+    state.availabilityLoading = false;
+    renderAvailabilityPolls();
+  }
   if (!profile) {
     state.availabilityPolls = [];
     state.availabilityLoading = false;

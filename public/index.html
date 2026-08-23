@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260823.1" />
+    <meta name="soundcheck-version" content="20260823.2" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260823.1" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260823.2" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260823.1" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260823.1" />
+    <link rel="stylesheet" href="./styles.css?v=20260823.2" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260823.2" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -162,11 +162,13 @@
         <div id="availabilityGuest" class="tab-guest-card availability-guest">
           <span class="guest-symbol">✓</span><p class="eyebrow">DATE MATCH</p><h2>로그인하고 날짜를 맞춰보세요</h2><p>같은 밴드에 가입된 멤버끼리 가능한 날짜를 공유할 수 있습니다.</p><button id="availabilityLoginButton" class="button button-primary" type="button">로그인 / 계정 만들기</button>
         </div>
+        <div id="availabilityRestricted" class="tab-guest-card availability-guest hidden">
+          <span class="guest-symbol">♬</span><p class="eyebrow">BAND MEMBERS ONLY</p><h2>밴드 멤버 전용 기능입니다</h2><p>각 조율은 해당 밴드에 가입된 멤버에게만 표시됩니다.</p>
+        </div>
         <div id="availabilityMember" class="availability-member hidden">
           <div class="availability-layout">
             <form id="availabilityPollForm" class="panel availability-create-panel">
               <div class="panel-heading"><h3>새 조율 만들기</h3><span>최대 31일</span></div>
-              <label id="availabilityBandField" class="hidden">조율할 밴드<select id="availabilityBand"></select></label>
               <label>조율 제목<input id="availabilityPollTitle" maxlength="50" placeholder="예: 9월 정기 합주 날짜" required /></label>
               <div class="form-row">
                 <label>시작 날짜<input id="availabilityFromDate" type="date" required /></label>
@@ -431,6 +433,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260823.1"></script>
+    <script type="module" src="./app.js?v=20260823.2"></script>
   </body>
 </html>
