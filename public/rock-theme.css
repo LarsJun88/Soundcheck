@@ -52,6 +52,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .button-install { border-color: transparent; color: var(--ink); background: var(--acid); }
 .button-install:hover { box-shadow: 3px 3px 0 var(--signal); }
 .text-button { padding: 6px; border: 0; color: inherit; background: transparent; font-size: 13px; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.profile-button { color: var(--acid); }
 .eyebrow { margin: 0 0 10px; color: var(--signal); font: 500 10px/1 "DM Mono", monospace; letter-spacing: 1.8px; }
 h1, h2, h3, p { margin-top: 0; }
 h2 { margin-bottom: 0; font: 800 clamp(27px, 3vw, 39px)/1 "Montserrat", "Gowun Dodum", sans-serif; letter-spacing: -1.9px; }
@@ -135,6 +136,7 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
 
  dialog { width: min(460px, calc(100% - 28px)); max-height: min(730px, calc(100% - 28px)); border: 1px solid var(--ink); border-top: 6px solid var(--signal); box-shadow: 9px 9px 0 var(--acid), var(--shadow); background: var(--cream); }
 .auth-dialog { padding: 36px; }.reservation-dialog { padding: 34px; } dialog::backdrop { background: rgba(9,10,13,.75); backdrop-filter: blur(4px); }.dialog-close { position: absolute; top: 13px; right: 15px; border: 0; color: var(--ink); background: transparent; font-size: 27px; line-height: 1; }.dialog-copy { margin: 9px 0 24px; color: var(--muted); font-size: 13px; }.auth-form { display: grid; gap: 1px; }.auth-links { margin-top: 14px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }.bootstrap-details { margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }.bootstrap-details summary { cursor: pointer; }.compact-form { margin-top: 13px; }
+.profile-account-meta { margin: -7px 0 22px; padding: 13px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 13px; border-left: 4px solid var(--signal); background: #edf6f8; }.profile-account-meta span { color: var(--muted); font: 500 9px "DM Mono", monospace; }.profile-account-meta strong { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .toast { position: fixed; z-index: 10; right: 20px; bottom: max(20px, env(safe-area-inset-bottom)); max-width: min(390px, calc(100% - 40px)); padding: 14px 17px; transform: translateY(20px); border-left: 5px solid var(--acid); color: white; background: var(--ink); box-shadow: 4px 4px 0 var(--signal); opacity: 0; transition: opacity .2s, transform .2s; font-size: 14px; pointer-events: none; }.toast.show { transform: translateY(0); opacity: 1; }.toast.error { border-left-color: #ff8b82; box-shadow: 4px 4px 0 #e88484; }
 
 @media (max-width: 850px) { .hero { grid-template-columns: 1fr; gap: 56px; }.room-card { width: min(420px, calc(100% - 10px)); justify-self: end; }.admin-grid { grid-template-columns: 1fr 1fr; }.settings-panel { grid-column: span 2; } }
@@ -152,6 +154,7 @@ textarea { min-height: 94px; resize: vertical; }.form-row { display: grid; grid-
   .band-logo-actions .button-ghost { width: 100%; }
 }
 @media (max-width: 600px) { .hero-reservation-button { max-width: none; } }
+@media (max-width: 600px) { .topbar-actions .profile-button, .topbar-actions #signOutButton { padding-inline: 2px; font-size: 9px; white-space: nowrap; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
 
 /* IMG_6484 ICON THEME · 20260722 */

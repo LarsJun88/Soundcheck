@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260823.2";
+const APP_VERSION = "20260823.3";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -1361,6 +1361,7 @@ function renderProfile() {
   const isActive = Boolean(profile);
   const canUseAvailability = Boolean(profile?.role === "band_admin" && profile.bandId);
   elements.profileChip.classList.toggle("hidden", !isActive);
+  elements.profileButton.classList.toggle("hidden", !isActive);
   elements.signOutButton.classList.toggle("hidden", !state.firebaseUser);
   const needsActivation = Boolean(state.firebaseUser && !profile);
   elements.openAuthButton.classList.toggle("hidden", Boolean(state.firebaseUser && profile));
@@ -1393,6 +1394,43 @@ function renderProfile() {
   renderBands();
   renderMyReservations();
   renderNotices();
+}
+
+function openProfileDialog() {
+  const profile = state.profile;
+  if (!profile) return openAuth();
+  const band = state.bands.find((item) => item.id === profile.bandId);
+  const roleText = profile.role === "main_admin" ? "메인 관리자" : (band?.name || "등록 밴드");
+  elements.profileDisplayName.value = profile.displayName || "";
+  elements.profileAccountMeta.innerHTML = `
+    <span>아이디</span><strong>${escapeHtml(profile.loginId || loginIdFromCurrentUser() || "확인 불가")}</strong>
+    <span>소속</span><strong>${escapeHtml(roleText)}</strong>`;
+  elements.profileDialog.showModal();
+  window.setTimeout(() => {
+    elements.profileDisplayName.focus();
+    elements.profileDisplayName.select();
+  }, 0);
+}
+
+async function handleProfileUpdate(event) {
+  event.preventDefault();
+  if (!state.profile) return openAuth();
+  const displayName = elements.profileDisplayName.value.trim().replace(/\s+/g, " ");
+  const submitButton = elements.profileForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    const result = await call("updateOwnDisplayName", { displayName });
+    state.profile = { ...state.profile, displayName: result.data.displayName };
+    renderProfile();
+    elements.profileDialog.close();
+    if (state.profile.role === "main_admin") await loadMemberRoster();
+    else await loadAvailabilityPolls();
+    showToast("닉네임을 변경했습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    submitButton.disabled = false;
+  }
 }
 
 function clearAppSubscriptions() {
@@ -2190,6 +2228,9 @@ async function loadMonthlyUsageStats() {
 function bindEvents() {
   elements.refreshAppButton.addEventListener("click", refreshApplication);
   elements.openAuthButton.addEventListener("click", openAuth);
+  elements.profileButton.addEventListener("click", openProfileDialog);
+  elements.closeProfileButton.addEventListener("click", () => elements.profileDialog.close());
+  elements.profileForm.addEventListener("submit", handleProfileUpdate);
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.reservationLoginButton.addEventListener("click", openAuth);
   elements.equipmentLoginButton.addEventListener("click", openAuth);

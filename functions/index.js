@@ -25,6 +25,7 @@ const PUSH_TOKEN_PATTERN = /^[A-Za-z0-9_:.-]{20,4096}$/;
 const EQUIPMENT_PHOTO_DATA_URL_PATTERN = /^data:image\/(?:jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const MAX_EQUIPMENT_PHOTO_DATA_URL_LENGTH = 240000;
 const MAX_RESERVATION_NOTE_LENGTH = 120;
+const MAX_DISPLAY_NAME_LENGTH = 40;
 const MAX_AVAILABILITY_POLL_TITLE_LENGTH = 50;
 const MAX_AVAILABILITY_POLL_DATES = 31;
 const EQUIPMENT_REPORT_STATUSES = new Set(["reported", "checking", "repairing", "resolved"]);
@@ -411,6 +412,23 @@ exports.listMemberRoster = onCall(async (request) => {
       inactive: members.filter((member) => !member.active).length,
     },
   };
+});
+
+exports.updateOwnDisplayName = onCall(async (request) => {
+  const auth = requireAuth(request);
+  await getProfile(auth.uid);
+  const displayName = String(request.data?.displayName || "")
+    .normalize("NFC")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!displayName || displayName.length > MAX_DISPLAY_NAME_LENGTH || /[\u0000-\u001f\u007f]/.test(displayName)) {
+    badRequest(`닉네임은 1~${MAX_DISPLAY_NAME_LENGTH}자로 입력해 주세요.`);
+  }
+  await db.collection("users").doc(auth.uid).set({
+    displayName,
+    displayNameUpdatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { displayName };
 });
 
 exports.createAvailabilityPoll = onCall(async (request) => {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260823.2" />
+    <meta name="soundcheck-version" content="20260823.3" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260823.2" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260823.3" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260823.2" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260823.2" />
+    <link rel="stylesheet" href="./styles.css?v=20260823.3" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260823.3" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -36,7 +36,8 @@
         <button id="refreshAppButton" class="button button-refresh" type="button" aria-label="앱 새로고침" title="최신 버전 새로고침"><span class="refresh-icon" aria-hidden="true">↻</span><span class="refresh-label">새로고침</span></button>
         <button id="installAppButton" class="button button-install hidden" type="button">홈 화면에 추가</button>
         <button id="openAuthButton" class="button button-dark">로그인 / 시작</button>
-        <button id="signOutButton" class="text-button hidden">로그아웃</button>
+        <button id="profileButton" class="text-button profile-button hidden" type="button">내 정보</button>
+        <button id="signOutButton" class="text-button hidden" type="button">로그아웃</button>
       </div>
     </header>
 
@@ -386,6 +387,18 @@
       </div>
     </dialog>
 
+    <dialog id="profileDialog" class="auth-dialog profile-dialog">
+      <button id="closeProfileButton" class="dialog-close" type="button" aria-label="닫기">×</button>
+      <p class="eyebrow">MY PROFILE</p>
+      <h2>내 정보</h2>
+      <p class="dialog-copy">내 계정과 멤버 목록에 표시되는 닉네임을 변경할 수 있습니다.</p>
+      <div id="profileAccountMeta" class="profile-account-meta"></div>
+      <form id="profileForm" class="auth-form">
+        <label>표시 닉네임<input id="profileDisplayName" maxlength="40" autocomplete="nickname" required /></label>
+        <button class="button button-primary form-submit" type="submit">닉네임 저장</button>
+      </form>
+    </dialog>
+
     <dialog id="reservationDialog" class="reservation-dialog">
       <button id="closeReservationButton" class="dialog-close" aria-label="닫기">×</button>
       <p class="eyebrow">RESERVATION</p>
@@ -433,6 +446,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260823.2"></script>
+    <script type="module" src="./app.js?v=20260823.3"></script>
   </body>
 </html>
