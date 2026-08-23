@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260821.1";
+const APP_VERSION = "20260823.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -104,6 +104,8 @@ const state = {
   monthReservations: [],
   announcements: [],
   equipmentReports: [],
+  availabilityPolls: [],
+  availabilityLoading: false,
   memberRoster: [],
   equipmentPhotoDataUrl: "",
   usageStats: null,
@@ -133,12 +135,14 @@ function requiredElement(id) {
   return element;
 }
 
-const APP_TABS = new Set(["home", "schedule", "reservation", "equipment", "menu"]);
+const APP_TABS = new Set(["home", "schedule", "availability", "reservation", "equipment", "menu"]);
 const TAB_HASH_ALIASES = {
   "": "home",
   top: "home",
   home: "home",
   schedule: "schedule",
+  availability: "availability",
+  availabilityArea: "availability",
   reservation: "reservation",
   memberArea: "reservation",
   equipment: "equipment",
@@ -175,6 +179,7 @@ function setActiveTab(tab, options = {}) {
     window.history.replaceState(null, "", url);
   }
   if (nextTab === "equipment" && state.profile) loadEquipmentReports();
+  if (nextTab === "availability" && state.profile) loadAvailabilityPolls();
   if (nextTab === "menu" && state.profile?.role === "main_admin") {
     loadMonthlyUsageStats();
     loadMemberRoster();
@@ -1193,6 +1198,135 @@ function renderMyReservations() {
   }).join("") : "<p class=\"empty-message\">예정된 예약이 없습니다.</p>";
   scheduleTrashAlerts();
 }
+
+function availabilityDateLabel(dateText) {
+  const date = new Date(`${dateText}T12:00:00+09:00`);
+  return new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", weekday: "short" }).format(date);
+}
+
+function availabilityResultDates(poll, filter) {
+  const results = Array.isArray(poll.dateResults) ? poll.dateResults.filter(filter) : [];
+  if (!results.length) return '<span class="availability-result-empty">아직 없음</span>';
+  return results.map((result) => `<span class="availability-result-date">${escapeHtml(availabilityDateLabel(result.date))}<em>${Number(result.count || 0)}/${Number(poll.totalMembers || 0)}명</em></span>`).join("");
+}
+
+function renderAvailabilityPolls() {
+  if (!elements.availabilityPollList) return;
+  if (state.availabilityLoading) {
+    elements.availabilityPollCount.textContent = "불러오는 중";
+    elements.availabilityPollList.innerHTML = '<p class="empty-message">밴드원들의 날짜 조율을 불러오는 중입니다.</p>';
+    return;
+  }
+  const polls = state.availabilityPolls;
+  elements.availabilityPollCount.textContent = `${polls.length}건`;
+  if (!polls.length) {
+    elements.availabilityPollList.innerHTML = '<div class="availability-empty"><strong>진행 중인 날짜 조율이 없습니다.</strong><p>왼쪽에서 후보 기간을 정해 첫 조율을 만들어 보세요.</p></div>';
+    return;
+  }
+  elements.availabilityPollList.innerHTML = polls.map((poll) => {
+    const dates = Array.isArray(poll.dates) ? poll.dates : [];
+    const selectedDates = new Set(Array.isArray(poll.selfAvailableDates) ? poll.selfAvailableDates : []);
+    const dateOptions = (Array.isArray(poll.dateResults) ? poll.dateResults : []).map((result) => `
+      <label class="availability-date-option ${result.allAvailable ? "is-all" : result.maximum ? "is-maximum" : ""}">
+        <input type="checkbox" value="${escapeHtml(result.date)}" ${selectedDates.has(result.date) ? "checked" : ""} />
+        <span><strong>${escapeHtml(availabilityDateLabel(result.date))}</strong><small>${Number(result.count || 0)}/${Number(poll.totalMembers || 0)}명 가능</small></span>
+      </label>`).join("");
+    const missingMembers = Array.isArray(poll.missingMembers) ? poll.missingMembers : [];
+    const allDates = availabilityResultDates(poll, (result) => result.allAvailable);
+    const maximumDates = Number(poll.maximumCount || 0) > 0
+      ? availabilityResultDates(poll, (result) => result.maximum)
+      : '<span class="availability-result-empty">응답 대기 중</span>';
+    const rangeText = dates.length ? `${availabilityDateLabel(dates[0])}–${availabilityDateLabel(dates[dates.length - 1])}` : "후보 날짜 없음";
+    return `
+      <article class="availability-poll-card" data-poll-card="${escapeHtml(poll.id)}">
+        <header class="availability-poll-header">
+          <div><span>${escapeHtml(poll.bandName)}</span><h3>${escapeHtml(poll.title)}</h3><p>${escapeHtml(rangeText)} · ${Number(poll.respondedCount || 0)}/${Number(poll.totalMembers || 0)}명 응답</p></div>
+          <span class="availability-response-state ${poll.hasResponded ? "is-done" : ""}">${poll.canRespond ? (poll.hasResponded ? "응답 완료" : "내 응답 필요") : "조회 전용"}</span>
+        </header>
+        <div class="availability-results">
+          <section class="availability-result-block is-all"><span>전원 가능일</span><div>${allDates}</div></section>
+          <section class="availability-result-block is-maximum"><span>최대 참석일 · ${Number(poll.maximumCount || 0)}명</span><div>${maximumDates}</div></section>
+        </div>
+        <div class="availability-missing ${missingMembers.length ? "" : "is-complete"}">
+          <strong>${missingMembers.length ? `미응답 ${missingMembers.length}명` : "모두 응답 완료"}</strong>
+          <p>${missingMembers.length ? missingMembers.map(escapeHtml).join(" · ") : "모든 밴드원이 가능한 날짜를 입력했습니다."}</p>
+        </div>
+        ${poll.canRespond ? `
+          <div class="availability-response-panel">
+            <div class="availability-response-heading"><strong>내가 가능한 날짜</strong><span>가능한 날짜를 모두 체크하세요.</span></div>
+            <div class="availability-date-grid">${dateOptions}</div>
+            <button class="button button-primary availability-save-button" type="button" data-save-availability="${escapeHtml(poll.id)}">${poll.hasResponded ? "내 응답 수정" : "가능 날짜 저장"}</button>
+          </div>` : ""}
+      </article>`;
+  }).join("");
+}
+
+async function loadAvailabilityPolls() {
+  if (!state.profile || state.availabilityLoading) return;
+  state.availabilityLoading = true;
+  renderAvailabilityPolls();
+  try {
+    const result = await call("listAvailabilityPolls");
+    state.availabilityPolls = Array.isArray(result.data?.polls) ? result.data.polls : [];
+  } catch (error) {
+    state.availabilityPolls = [];
+    showToast(errorMessage(error), true);
+  } finally {
+    state.availabilityLoading = false;
+    renderAvailabilityPolls();
+  }
+}
+
+function syncAvailabilityDateRange() {
+  const today = todayInSeoul();
+  const from = elements.availabilityFromDate.value || today;
+  const maximum = addDays(from, 30);
+  elements.availabilityFromDate.min = today;
+  elements.availabilityToDate.min = from;
+  elements.availabilityToDate.max = maximum;
+  if (!elements.availabilityToDate.value || elements.availabilityToDate.value < from || elements.availabilityToDate.value > maximum) {
+    elements.availabilityToDate.value = addDays(from, 13);
+  }
+}
+
+async function handleAvailabilityPollCreate(event) {
+  event.preventDefault();
+  if (!state.profile) return openAuth();
+  const submitButton = elements.availabilityPollForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    await call("createAvailabilityPoll", {
+      title: elements.availabilityPollTitle.value.trim(),
+      from: elements.availabilityFromDate.value,
+      to: elements.availabilityToDate.value,
+      ...(state.profile.role === "main_admin" ? { bandId: elements.availabilityBand.value } : {}),
+    });
+    elements.availabilityPollTitle.value = "";
+    await loadAvailabilityPolls();
+    showToast("새 합주 날짜 조율을 만들었습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function saveAvailabilityResponse(pollId, button) {
+  const card = button.closest("[data-poll-card]");
+  if (!card) return;
+  const availableDates = [...card.querySelectorAll('.availability-date-option input[type="checkbox"]:checked')].map((input) => input.value);
+  button.disabled = true;
+  try {
+    await call("submitAvailabilityResponse", { pollId, availableDates });
+    await loadAvailabilityPolls();
+    showToast(availableDates.length ? `가능한 날짜 ${availableDates.length}개를 저장했습니다.` : "가능한 날짜 없음으로 응답했습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderBands() {
   renderBandDirectory();
   if (state.profile?.role !== "main_admin") {
@@ -1201,13 +1335,16 @@ function renderBands() {
   }
   const activeBands = state.bands.filter((band) => band.active);
   const reservationValue = elements.reservationBand.value;
+  const availabilityValue = elements.availabilityBand.value;
   const logoValue = elements.logoBand.value;
   const deleteValue = elements.deleteBand.value;
   const options = activeBands.map((band) => `<option value="${band.id}">${escapeHtml(band.name)}</option>`).join("");
   elements.reservationBand.innerHTML = options;
+  elements.availabilityBand.innerHTML = options || '<option value="">조율할 밴드 없음</option>';
   elements.logoBand.innerHTML = options;
   elements.deleteBand.innerHTML = options || '<option value="">삭제할 밴드 없음</option>';
   if (activeBands.some((band) => band.id === reservationValue)) elements.reservationBand.value = reservationValue;
+  if (activeBands.some((band) => band.id === availabilityValue)) elements.availabilityBand.value = availabilityValue;
   if (activeBands.some((band) => band.id === logoValue)) elements.logoBand.value = logoValue;
   if (activeBands.some((band) => band.id === deleteValue)) elements.deleteBand.value = deleteValue;
   renderBandLogoPreview();
@@ -1228,9 +1365,16 @@ function renderProfile() {
   elements.reservationTabGuest.classList.toggle("hidden", isActive);
   elements.equipmentArea.classList.toggle("hidden", !isActive);
   elements.equipmentTabGuest.classList.toggle("hidden", isActive);
+  elements.availabilityGuest.classList.toggle("hidden", isActive);
+  elements.availabilityMember.classList.toggle("hidden", !isActive);
+  elements.availabilityRefreshButton.classList.toggle("hidden", !isActive);
   elements.adminArea.classList.toggle("hidden", profile?.role !== "main_admin");
   elements.reservationBandField.classList.toggle("hidden", profile?.role !== "main_admin");
+  elements.availabilityBandField.classList.toggle("hidden", profile?.role !== "main_admin");
   if (!profile) {
+    state.availabilityPolls = [];
+    state.availabilityLoading = false;
+    renderAvailabilityPolls();
     renderNotices();
     return;
   }
@@ -2040,6 +2184,14 @@ function bindEvents() {
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.reservationLoginButton.addEventListener("click", openAuth);
   elements.equipmentLoginButton.addEventListener("click", openAuth);
+  elements.availabilityLoginButton.addEventListener("click", openAuth);
+  elements.availabilityRefreshButton.addEventListener("click", loadAvailabilityPolls);
+  elements.availabilityPollForm.addEventListener("submit", handleAvailabilityPollCreate);
+  elements.availabilityFromDate.addEventListener("change", syncAvailabilityDateRange);
+  elements.availabilityPollList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-save-availability]");
+    if (button) saveAvailabilityResponse(button.dataset.saveAvailability, button);
+  });
   elements.bottomNavigation.addEventListener("click", (event) => {
     const tab = event.target.closest("[data-tab-target]")?.dataset.tabTarget;
     if (tab) setActiveTab(tab);
@@ -2205,12 +2357,16 @@ function initialise() {
   elements.reservationDate.value = today;
   elements.reservationDate.min = today;
   elements.reservationEditDate.min = today;
+  elements.availabilityFromDate.value = today;
+  elements.availabilityToDate.value = addDays(today, 13);
+  syncAvailabilityDateRange();
   renderTrashSchedule();
   renderReservationTrashPreview();
   renderRepeatReservationUi();
   renderReservationNoteCount();
   renderMonthCalendar();
   renderHomeScheduleSummary();
+  renderAvailabilityPolls();
   updateTrashNotificationUi();
   applyRoomToControls();
   bindEvents();
@@ -2240,6 +2396,7 @@ function initialise() {
       await Promise.all([
         syncPushSubscription({ silent: true }),
         loadEquipmentReports(),
+        loadAvailabilityPolls(),
         state.profile.role === "main_admin" ? loadMonthlyUsageStats() : Promise.resolve(),
         state.profile.role === "main_admin" ? loadMemberRoster() : Promise.resolve(),
       ]);

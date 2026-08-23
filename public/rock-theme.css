@@ -530,7 +530,7 @@ main { min-height: calc(100dvh - 172px); }
 .tab-guest-card .eyebrow { margin-bottom: 12px; }.tab-guest-card h2 { margin-bottom: 14px; }.tab-guest-card > p:not(.eyebrow) { max-width: 390px; margin: 0 auto 28px; color: var(--muted); font-size: 14px; }.tab-guest-card .button { min-width: 210px; }
 .equipment-area[data-tab-view] { min-height: calc(100dvh - 170px); padding-top: 78px; padding-bottom: 108px; }
 
-.bottom-navigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); width: min(590px, calc(100% - 28px)); min-height: 70px; padding: 7px; display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid rgba(114,202,215,.33); border-radius: 22px; background: rgba(5,17,55,.97); box-shadow: 0 16px 44px rgba(3,12,39,.38); backdrop-filter: blur(18px); transform: translate3d(-50%, 0, 0); isolation: isolate; will-change: transform; }
+.bottom-navigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); width: min(650px, calc(100% - 28px)); min-height: 70px; padding: 7px; display: grid; grid-template-columns: repeat(6, 1fr); border: 1px solid rgba(114,202,215,.33); border-radius: 22px; background: rgba(5,17,55,.97); box-shadow: 0 16px 44px rgba(3,12,39,.38); backdrop-filter: blur(18px); transform: translate3d(-50%, 0, 0); isolation: isolate; will-change: transform; }
 .bottom-tab { min-width: 0; padding: 7px 4px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; border: 0; border-radius: 16px; color: rgba(255,255,255,.57); background: transparent; font: 700 10px/1.1 "Gowun Dodum", sans-serif; transition: color .18s ease, background .18s ease, transform .18s ease; }
 .bottom-tab:hover { color: white; background: rgba(255,255,255,.07); }.bottom-tab.is-active { color: #06153b; background: var(--acid); box-shadow: 0 7px 18px rgba(82,200,208,.2); }
 .bottom-tab-icon { height: 24px; display: grid; place-items: center; font: 800 21px/1 "Montserrat", sans-serif; }
@@ -631,4 +631,39 @@ main { min-height: calc(100dvh - 172px); }
   .home-status-card strong { font-size: 15px; }.home-status-card small { font-size: 9px; white-space: normal; }
   .reservation-dialog-actions { grid-template-columns: 1fr 1fr; }.reservation-dialog-actions .button:first-child { grid-column: 1 / -1; }
   .reservation-edit-actions { grid-template-columns: 1fr; }
+}
+
+/* BAND AVAILABILITY POLLS · 20260823 */
+.availability-area { min-height: calc(100dvh - 170px); padding-top: 78px; padding-bottom: 112px; }
+.availability-heading { align-items: end; margin-bottom: 28px; }.availability-heading h2 { margin-bottom: 8px; }.availability-heading > div > p:last-child { max-width: 650px; margin: 0; color: var(--muted); font-size: 13px; }
+.availability-guest { margin: 50px auto 0; }
+.availability-layout { display: grid; grid-template-columns: minmax(270px, .68fr) minmax(0, 1.32fr); gap: 20px; align-items: start; }
+.availability-create-panel { position: sticky; top: 92px; border-top-color: var(--acid); }
+.availability-polls-panel > .panel-heading { margin-bottom: 13px; }
+.availability-poll-list { display: grid; gap: 15px; }
+.availability-empty { padding: 42px 24px; border: 1px dashed #9eb8c6; color: var(--muted); background: rgba(248,253,254,.68); text-align: center; }.availability-empty strong { display: block; margin-bottom: 6px; color: var(--ink); }.availability-empty p { margin: 0; font-size: 12px; }
+.availability-poll-card { overflow: hidden; border: 1px solid #b7c9d3; border-top: 5px solid var(--signal); background: #f8fcfd; box-shadow: 5px 5px 0 rgba(7,20,61,.1); }
+.availability-poll-header { padding: 17px 18px; display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; border-bottom: 1px solid #cddbe2; background: #eef6f8; }.availability-poll-header > div { min-width: 0; }.availability-poll-header > div > span { color: var(--signal); font: 700 9px "DM Mono", monospace; letter-spacing: 1px; }.availability-poll-header h3 { margin: 4px 0 5px; overflow: hidden; color: var(--ink); font: 800 19px/1.2 "Montserrat", "Gowun Dodum", sans-serif; text-overflow: ellipsis; white-space: nowrap; }.availability-poll-header p { margin: 0; color: var(--muted); font-size: 10.5px; }
+.availability-response-state { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: #8a5b12; background: #ffe5a7; font-size: 9px; font-weight: 800; }.availability-response-state.is-done { color: #0b644d; background: #ccefe5; }
+.availability-results { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.availability-result-block { min-width: 0; min-height: 100px; padding: 12px; border: 1px solid #c8d6dd; background: #fff; }.availability-result-block > span { display: block; margin-bottom: 9px; color: var(--muted); font: 700 9px "DM Mono", monospace; letter-spacing: .5px; }.availability-result-block > div { display: flex; flex-wrap: wrap; gap: 5px; }.availability-result-block.is-all { border-left: 4px solid #20aa80; }.availability-result-block.is-maximum { border-left: 4px solid var(--signal); }
+.availability-result-date { padding: 6px 7px; display: inline-grid; gap: 1px; border-radius: 3px; color: var(--ink); background: #e7f5f3; font-size: 10px; font-weight: 800; }.availability-result-date em { color: var(--muted); font: 8px "DM Mono", monospace; font-style: normal; }.availability-result-empty { color: #8b96a3; font-size: 11px; }
+.availability-missing { margin: 0 14px 14px; padding: 11px 12px; border-left: 4px solid #e89933; color: #654713; background: #fff3d9; }.availability-missing strong { display: block; margin-bottom: 3px; font-size: 11px; }.availability-missing p { margin: 0; font-size: 10.5px; }.availability-missing.is-complete { border-left-color: #20aa80; color: #155f4e; background: #e1f6ef; }
+.availability-response-panel { padding: 16px 14px 17px; border-top: 1px solid #cddbe2; background: #edf5f8; }.availability-response-heading { margin-bottom: 11px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }.availability-response-heading strong { color: var(--ink); font-size: 12px; }.availability-response-heading span { color: var(--muted); font-size: 9px; }
+.availability-date-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.availability-date-option { position: relative; min-width: 0; margin: 0; cursor: pointer; }.availability-date-option input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }.availability-date-option span { min-height: 54px; padding: 8px 6px; display: flex; align-items: flex-start; justify-content: center; flex-direction: column; border: 1px solid #b8cbd5; border-radius: 3px; color: var(--ink); background: #fff; transition: border-color .14s ease, color .14s ease, background .14s ease; }.availability-date-option strong { overflow: hidden; width: 100%; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }.availability-date-option small { margin-top: 3px; color: var(--muted); font-size: 8.5px; }.availability-date-option input:checked + span { color: #fff; border-color: var(--signal); background: linear-gradient(140deg, #0e8ea9, var(--signal)); box-shadow: 2px 2px 0 #07143d; }.availability-date-option input:checked + span small { color: rgba(255,255,255,.78); }.availability-date-option input:focus-visible + span { outline: 3px solid var(--acid); outline-offset: 2px; }.availability-date-option.is-all span { border-color: #20aa80; }.availability-date-option.is-maximum span { border-color: var(--signal); }
+.availability-save-button { width: 100%; margin-top: 12px; }
+
+@media (max-width: 900px) {
+  .availability-layout { grid-template-columns: 1fr; }.availability-create-panel { position: static; }
+}
+
+@media (max-width: 600px) {
+  .availability-area { padding-top: 54px; padding-bottom: 86px; }.availability-heading { align-items: stretch; }.availability-heading .button { width: 100%; }
+  .availability-guest { margin-top: 18px; }.availability-layout { gap: 15px; }
+  .availability-poll-header { padding: 14px; }.availability-poll-header h3 { font-size: 16px; }.availability-poll-header p { white-space: normal; }
+  .availability-results { grid-template-columns: 1fr; padding: 10px; }.availability-result-block { min-height: 0; }
+  .availability-missing { margin: 0 10px 10px; }.availability-response-panel { padding: 14px 10px; }.availability-response-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .availability-date-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }.availability-date-option span { min-height: 58px; padding: 8px; }.availability-date-option strong { font-size: 11px; }
+  .bottom-tab { font-size: 8px; }.bottom-tab-icon { font-size: 17px; }
 }

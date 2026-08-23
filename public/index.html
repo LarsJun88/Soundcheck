@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260821.1" />
+    <meta name="soundcheck-version" content="20260823.1" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260821.1" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260823.1" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260821.1" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260821.1" />
+    <link rel="stylesheet" href="./styles.css?v=20260823.1" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260823.1" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -153,6 +153,36 @@
           </div>
         </div>
       </section>
+
+      <section id="availabilityArea" class="availability-area page-width" data-tab-view="availability" hidden aria-labelledby="availabilityTitle">
+        <div class="section-heading availability-heading">
+          <div><p class="eyebrow">BAND AVAILABILITY</p><h2 id="availabilityTitle">합주 날짜 맞추기</h2><p>가능한 날짜를 각자 체크하면 전원 가능일과 가장 많은 인원이 가능한 날을 자동으로 계산합니다.</p></div>
+          <button id="availabilityRefreshButton" class="button button-light hidden" type="button">새로고침</button>
+        </div>
+        <div id="availabilityGuest" class="tab-guest-card availability-guest">
+          <span class="guest-symbol">✓</span><p class="eyebrow">DATE MATCH</p><h2>로그인하고 날짜를 맞춰보세요</h2><p>같은 밴드에 가입된 멤버끼리 가능한 날짜를 공유할 수 있습니다.</p><button id="availabilityLoginButton" class="button button-primary" type="button">로그인 / 계정 만들기</button>
+        </div>
+        <div id="availabilityMember" class="availability-member hidden">
+          <div class="availability-layout">
+            <form id="availabilityPollForm" class="panel availability-create-panel">
+              <div class="panel-heading"><h3>새 조율 만들기</h3><span>최대 31일</span></div>
+              <label id="availabilityBandField" class="hidden">조율할 밴드<select id="availabilityBand"></select></label>
+              <label>조율 제목<input id="availabilityPollTitle" maxlength="50" placeholder="예: 9월 정기 합주 날짜" required /></label>
+              <div class="form-row">
+                <label>시작 날짜<input id="availabilityFromDate" type="date" required /></label>
+                <label>종료 날짜<input id="availabilityToDate" type="date" required /></label>
+              </div>
+              <button class="button button-primary form-submit" type="submit">날짜 조율 만들기</button>
+              <p class="form-help">후보 기간의 모든 날짜가 표시되며, 밴드원은 가능한 날짜만 체크합니다.</p>
+            </form>
+            <section class="availability-polls-panel" aria-labelledby="availabilityPollsTitle">
+              <div class="panel-heading"><h3 id="availabilityPollsTitle">진행 중인 조율</h3><span id="availabilityPollCount">0건</span></div>
+              <div id="availabilityPollList" class="availability-poll-list" aria-live="polite"><p class="empty-message">날짜 조율을 불러오는 중입니다.</p></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
       <div id="memberAreaAnchor" hidden></div>
       <section id="memberArea" class="member-area page-width hidden" data-tab-view="reservation" hidden aria-label="예약 관리">
         <div class="member-intro">
@@ -299,6 +329,7 @@
     <nav id="bottomNavigation" class="bottom-navigation" aria-label="주요 화면">
       <button class="bottom-tab is-active" type="button" data-tab-target="home" aria-current="page"><span class="bottom-tab-icon">⌂</span><span>홈</span></button>
       <button class="bottom-tab" type="button" data-tab-target="schedule"><span class="bottom-tab-icon">▦</span><span>일정</span></button>
+      <button class="bottom-tab" type="button" data-tab-target="availability"><span class="bottom-tab-icon">✓</span><span>조율</span></button>
       <button class="bottom-tab bottom-tab-primary" type="button" data-tab-target="reservation"><span class="bottom-tab-icon">＋</span><span>예약</span></button>
       <button class="bottom-tab" type="button" data-tab-target="equipment"><span class="bottom-tab-icon">⚙</span><span>장비</span></button>
       <button class="bottom-tab" type="button" data-tab-target="menu"><span class="bottom-tab-icon">≡</span><span>기타</span></button>
@@ -400,6 +431,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260821.1"></script>
+    <script type="module" src="./app.js?v=20260823.1"></script>
   </body>
 </html>
