@@ -28,6 +28,17 @@ const MAX_RESERVATION_NOTE_LENGTH = 120;
 const MAX_DISPLAY_NAME_LENGTH = 40;
 const MAX_AVAILABILITY_POLL_TITLE_LENGTH = 50;
 const MAX_AVAILABILITY_POLL_DATES = 31;
+const DEFAULT_AIRCON_AUTOMATION_SETTINGS = Object.freeze({
+  enabled: true,
+  mode: "simulation",
+  preStartMinutes: 5,
+  postEndMinutes: 5,
+  safetyOffHour: 23,
+  safetyOffMinute: 59,
+});
+const AIRCON_EVENT_LATE_TOLERANCE_MS = 75 * 1000;
+const AIRCON_EVENT_EARLY_TOLERANCE_MS = 15 * 1000;
+const AIRCON_RUN_LEASE_MS = 10 * 60 * 1000;
 const EQUIPMENT_REPORT_STATUSES = new Set(["reported", "checking", "repairing", "resolved"]);
 const INVALID_PUSH_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
@@ -106,6 +117,24 @@ function dateInSeoul(date = new Date()) {
   }).formatToParts(date);
   const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function timeInSeoul(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${byType.year}-${byType.month}-${byType.day}`,
+    hour: Number(byType.hour),
+    minute: Number(byType.minute),
+  };
 }
 
 function parseReservationDate(date, hour) {
@@ -311,6 +340,128 @@ async function dueReservations(definition, now = new Date()) {
     .filter((reservation) => reservation.status === "confirmed");
 }
 
+async function getAirConditionerAutomationSettings() {
+  const snapshot = await db.collection("settings").doc("airConditionerAutomation").get();
+  const stored = snapshot.exists ? snapshot.data() : {};
+  return {
+    ...DEFAULT_AIRCON_AUTOMATION_SETTINGS,
+    enabled: stored.enabled !== false,
+    // 실제 기기 명령은 HeyHome API 정보와 기기 ID를 등록한 뒤 별도로 활성화한다.
+    mode: "simulation",
+  };
+}
+
+async function dueAirConditionerReservations(field, offsetMinutes, now = new Date()) {
+  const sourceTarget = now.getTime() + (offsetMinutes * 60000);
+  const windowStart = Timestamp.fromMillis(sourceTarget - AIRCON_EVENT_LATE_TOLERANCE_MS);
+  const windowEnd = Timestamp.fromMillis(sourceTarget + AIRCON_EVENT_EARLY_TOLERANCE_MS);
+  const snapshot = await db.collection("reservations")
+    .where(field, ">=", windowStart)
+    .where(field, "<", windowEnd)
+    .get();
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((reservation) => reservation.status === "confirmed");
+}
+
+async function confirmedReservationsForDate(date) {
+  const snapshot = await db.collection("reservations").where("date", "==", date).get();
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((reservation) => reservation.status === "confirmed");
+}
+
+async function shouldKeepAirConditionerOn(now = new Date()) {
+  const today = dateInSeoul(now);
+  const dates = [addDaysToDateText(today, -1), today, addDaysToDateText(today, 1)];
+  const reservations = (await Promise.all(dates.map(confirmedReservationsForDate))).flat();
+  const nowMillis = now.getTime();
+  const upcomingLimit = nowMillis + (5 * 60000);
+  return reservations.some((reservation) => {
+    const startMillis = reservation.startAt?.toMillis?.() || parseReservationDate(reservation.date, reservation.startHour).getTime();
+    const endMillis = reservation.endAt?.toMillis?.() || parseReservationDate(reservation.date, reservation.endHour).getTime();
+    return startMillis <= upcomingLimit && endMillis > nowMillis;
+  });
+}
+
+async function claimAirConditionerRun(runId, details) {
+  const reference = db.collection("airConditionerAutomationRuns").doc(runId);
+  const now = Timestamp.now();
+  const claimed = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    const data = snapshot.exists ? snapshot.data() : null;
+    const claimTime = data?.claimedAt?.toMillis?.() || 0;
+    const completed = ["simulated", "sent", "skipped"].includes(String(data?.status || ""));
+    if (completed || (claimTime && now.toMillis() - claimTime < AIRCON_RUN_LEASE_MS)) return false;
+    const nextData = {
+      ...details,
+      mode: "simulation",
+      status: "processing",
+      claimedAt: now,
+    };
+    if (snapshot.exists) {
+      nextData.executedAt = FieldValue.delete();
+      nextData.error = FieldValue.delete();
+    }
+    transaction.set(reference, nextData, { merge: true });
+    return true;
+  });
+  return { claimed, reference };
+}
+
+async function runAirConditionerCommand({
+  runId,
+  command,
+  reason,
+  reservation = null,
+  date = "",
+  scheduledFor = null,
+  skipReason = "",
+}) {
+  const details = {
+    command,
+    reason,
+    reservationId: reservation?.id || "",
+    bandId: String(reservation?.bandId || ""),
+    bandName: String(reservation?.bandName || ""),
+    date: String(date || reservation?.date || dateInSeoul()),
+    scheduledFor: scheduledFor ? Timestamp.fromDate(scheduledFor) : Timestamp.now(),
+  };
+  const claim = await claimAirConditionerRun(runId, details);
+  if (!claim.claimed) return { executed: false, duplicate: true };
+  if (skipReason) {
+    await claim.reference.set({
+      status: "skipped",
+      skipReason,
+      executedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { executed: false, skipped: true };
+  }
+
+  // 기기 구입 전 단계에서는 실제 외부 API를 호출하지 않고 명령과 시간을 기록한다.
+  await claim.reference.set({
+    status: "simulated",
+    executedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { executed: true, simulated: true };
+}
+
+function serializeAirConditionerRun(snapshot) {
+  const data = snapshot.data();
+  const asIso = (value) => value?.toDate ? value.toDate().toISOString() : "";
+  return {
+    id: snapshot.id,
+    command: String(data.command || ""),
+    reason: String(data.reason || ""),
+    status: String(data.status || ""),
+    skipReason: String(data.skipReason || ""),
+    bandName: String(data.bandName || ""),
+    date: String(data.date || ""),
+    scheduledFor: asIso(data.scheduledFor),
+    executedAt: asIso(data.executedAt || data.claimedAt),
+  };
+}
+
 async function createServerLogoThumbnail(logoDataUrl) {
   const match = LOGO_DATA_URL_PATTERN.exec(logoDataUrl);
   if (!match) throw new Error("Unsupported legacy logo format");
@@ -412,6 +563,46 @@ exports.listMemberRoster = onCall(async (request) => {
       inactive: members.filter((member) => !member.active).length,
     },
   };
+});
+
+exports.getAirConditionerAutomation = onCall(async (request) => {
+  await requireMainAdmin(request);
+  const [settings, runsSnapshot] = await Promise.all([
+    getAirConditionerAutomationSettings(),
+    db.collection("airConditionerAutomationRuns").orderBy("claimedAt", "desc").limit(20).get(),
+  ]);
+  return {
+    settings,
+    runs: runsSnapshot.docs.map(serializeAirConditionerRun),
+  };
+});
+
+exports.updateAirConditionerAutomation = onCall(async (request) => {
+  const { auth } = await requireMainAdmin(request);
+  if (typeof request.data?.enabled !== "boolean") badRequest("에어컨 자동화 사용 여부를 확인해 주세요.");
+  const settings = {
+    ...DEFAULT_AIRCON_AUTOMATION_SETTINGS,
+    enabled: request.data.enabled,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: auth.uid,
+  };
+  await db.collection("settings").doc("airConditionerAutomation").set(settings, { merge: true });
+  return { settings: { ...DEFAULT_AIRCON_AUTOMATION_SETTINGS, enabled: request.data.enabled } };
+});
+
+exports.testAirConditionerAutomation = onCall(async (request) => {
+  await requireMainAdmin(request);
+  const command = String(request.data?.command || "").toLowerCase();
+  if (!new Set(["on", "off"]).has(command)) badRequest("테스트 명령을 확인해 주세요.");
+  const now = new Date();
+  const result = await runAirConditionerCommand({
+    runId: `manual_${now.getTime()}_${crypto.randomBytes(4).toString("hex")}`,
+    command,
+    reason: "manual_test",
+    date: dateInSeoul(now),
+    scheduledFor: now,
+  });
+  return { ...result, mode: "simulation" };
 });
 
 exports.updateOwnDisplayName = onCall(async (request) => {
@@ -1162,6 +1353,9 @@ exports.updateReservation = onCall(async (request) => {
       originalStartHour: Number(reservation.startHour),
       originalEndHour: Number(reservation.endHour),
       nextDate,
+      scheduleChanged: reservation.date !== nextDate
+        || Number(reservation.startHour) !== startHour
+        || Number(reservation.endHour) !== endHour,
       bandId: reservation.bandId,
       repeatGroupId: String(reservation.repeatGroupId || ""),
     };
@@ -1242,11 +1436,46 @@ exports.updateReservation = onCall(async (request) => {
     }, { merge: true }));
   });
 
+  const changedPlans = plans.filter((plan) => plan.scheduleChanged);
+  const previousAirConditionerRuns = await Promise.all(changedPlans.map((plan) => (
+    db.collection("airConditionerAutomationRuns").doc(`${plan.id}_pre_on`).get()
+  )));
   const reminderBatch = db.batch();
   plans.forEach((plan) => PUSH_REMINDER_DEFINITIONS.forEach((definition) => {
     reminderBatch.delete(db.collection("pushReminderDeliveries").doc(`${plan.id}_${definition.key}`));
   }));
+  changedPlans.forEach((plan) => {
+    reminderBatch.delete(db.collection("airConditionerAutomationRuns").doc(`${plan.id}_pre_on`));
+    reminderBatch.delete(db.collection("airConditionerAutomationRuns").doc(`${plan.id}_post_off`));
+  });
   await reminderBatch.commit();
+
+  const previouslyActivatedPlans = changedPlans.filter((plan, index) => {
+    const status = String(previousAirConditionerRuns[index]?.data()?.status || "");
+    return ["simulated", "sent"].includes(status);
+  });
+  if (previouslyActivatedPlans.length) {
+    const settings = await getAirConditionerAutomationSettings();
+    if (settings.enabled) {
+      const now = new Date();
+      const keepOn = await shouldKeepAirConditionerOn(now);
+      for (const plan of previouslyActivatedPlans) {
+        await runAirConditionerCommand({
+          runId: `${plan.id}_reschedule_off_${plan.originalDate}_${plan.originalStartHour}`,
+          command: "off",
+          reason: "reservation_updated",
+          reservation: {
+            id: plan.id,
+            bandId: target.bandId,
+            bandName: target.bandName,
+            date: plan.originalDate,
+          },
+          scheduledFor: now,
+          skipReason: keepOn ? "변경된 예약 또는 다른 합주가 현재 진행 중입니다." : "",
+        });
+      }
+    }
+  }
 
   await sendPushToBand(target.bandId, {
     title: plans.length > 1 ? "합주실 반복 예약 변경" : "합주실 예약 변경",
@@ -1296,6 +1525,25 @@ exports.cancelReservation = onCall(async (request) => {
   });
 
   if (cancelledReservation) {
+    const now = new Date();
+    const settings = await getAirConditionerAutomationSettings();
+    const startMillis = cancelledReservation.startAt?.toMillis?.()
+      || parseReservationDate(cancelledReservation.date, cancelledReservation.startHour).getTime();
+    const endMillis = cancelledReservation.endAt?.toMillis?.()
+      || parseReservationDate(cancelledReservation.date, cancelledReservation.endHour).getTime();
+    const automationWindowStarted = now.getTime() >= startMillis - (settings.preStartMinutes * 60000);
+    const automationWindowOpen = now.getTime() < endMillis + (settings.postEndMinutes * 60000);
+    if (settings.enabled && automationWindowStarted && automationWindowOpen) {
+      const keepOn = await shouldKeepAirConditionerOn(now);
+      await runAirConditionerCommand({
+        runId: `${reservationId}_cancellation_off`,
+        command: "off",
+        reason: "reservation_cancelled",
+        reservation: cancelledReservation,
+        scheduledFor: now,
+        skipReason: keepOn ? "다른 합주가 진행 중이거나 5분 안에 시작됩니다." : "",
+      });
+    }
     await sendPushToBand(cancelledReservation.bandId, {
       title: "합주실 예약 취소",
       body: `${cancelledReservation.bandName} · ${reservationDateLabel(cancelledReservation.date)} ${displayTime(cancelledReservation.startHour)}–${displayTime(cancelledReservation.endHour)}`,
@@ -1338,6 +1586,73 @@ exports.sendReservationReminders = onSchedule(
           console.error(`Could not send ${definition.key} reminder for ${reservation.id}`, error);
           await claim.reference.delete().catch(() => {});
         }
+      }
+    }
+  },
+);
+
+exports.runAirConditionerAutomation = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    timeZone: "Asia/Seoul",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async () => {
+    const settings = await getAirConditionerAutomationSettings();
+    if (!settings.enabled) return;
+
+    const now = new Date();
+    const startReservations = await dueAirConditionerReservations("startAt", settings.preStartMinutes, now);
+    for (const reservation of startReservations) {
+      const startDate = reservation.startAt?.toDate?.()
+        || parseReservationDate(reservation.date, reservation.startHour);
+      const scheduledFor = new Date(startDate.getTime() - (settings.preStartMinutes * 60000));
+      await runAirConditionerCommand({
+        runId: `${reservation.id}_pre_on`,
+        command: "on",
+        reason: "pre_start",
+        reservation,
+        scheduledFor,
+      });
+    }
+
+    const endReservations = await dueAirConditionerReservations("endAt", -settings.postEndMinutes, now);
+    if (endReservations.length) {
+      const keepOn = await shouldKeepAirConditionerOn(now);
+      for (const reservation of endReservations) {
+        const endDate = reservation.endAt?.toDate?.()
+          || parseReservationDate(reservation.date, reservation.endHour);
+        const scheduledFor = new Date(endDate.getTime() + (settings.postEndMinutes * 60000));
+        await runAirConditionerCommand({
+          runId: `${reservation.id}_post_off`,
+          command: "off",
+          reason: "post_end",
+          reservation,
+          scheduledFor,
+          skipReason: keepOn ? "다른 합주가 진행 중이거나 5분 안에 시작됩니다." : "",
+        });
+      }
+    }
+
+    const seoul = timeInSeoul(now);
+    let safetyDate = "";
+    if (seoul.hour === settings.safetyOffHour && seoul.minute === settings.safetyOffMinute) {
+      safetyDate = seoul.date;
+    } else if (seoul.hour === 0 && seoul.minute <= 2) {
+      // 23:59 실행이 지연된 경우 자정 직후까지 한 번 보정한다.
+      safetyDate = addDaysToDateText(seoul.date, -1);
+    }
+    if (safetyDate) {
+      const reservations = await confirmedReservationsForDate(safetyDate);
+      if (reservations.length) {
+        await runAirConditionerCommand({
+          runId: `${safetyDate}_safety_off`,
+          command: "off",
+          reason: "daily_safety",
+          date: safetyDate,
+          scheduledFor: new Date(`${safetyDate}T23:59:00+09:00`),
+        });
       }
     }
   },

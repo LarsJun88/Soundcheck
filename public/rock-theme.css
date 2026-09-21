@@ -671,3 +671,25 @@ main { min-height: calc(100dvh - 172px); }
   .availability-date-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }.availability-date-option span { min-height: 58px; padding: 8px; }.availability-date-option strong { font-size: 11px; }
   .bottom-tab { font-size: 8px; }.bottom-tab-icon { font-size: 17px; }
 }
+
+/* AIR-CONDITIONER AUTOMATION · 20260921 */
+.aircon-automation-panel { grid-column: 1 / -1; border-top: 5px solid var(--signal); background: linear-gradient(145deg, #f7fcfd, #e6f3f6); }
+.aircon-toggle { padding: 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; border: 1px solid #bdd0d8; background: #fff; cursor: pointer; }
+.aircon-toggle input { width: 21px; height: 21px; margin: 0; accent-color: var(--signal); }
+.aircon-toggle span { display: grid; gap: 3px; }.aircon-toggle strong { color: var(--ink); font-size: 13px; }.aircon-toggle small { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.aircon-rule-grid { margin: 13px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.aircon-rule-grid article { min-height: 78px; padding: 12px; display: grid; align-content: center; gap: 5px; border: 1px solid #bed0d8; border-left: 4px solid var(--acid); background: rgba(255,255,255,.76); }
+.aircon-rule-grid article:nth-child(n+2) { border-left-color: var(--signal); }.aircon-rule-grid strong { color: var(--signal); font: 800 13px "DM Mono", monospace; }.aircon-rule-grid span { color: var(--ink); font-size: 11px; font-weight: 700; }
+.aircon-test-actions { margin-top: 11px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }.aircon-test-actions .button { min-height: 38px; padding: 8px 13px; }.aircon-test-actions .text-button { margin-left: auto; }
+.aircon-log-heading { margin: 22px 0 9px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }.aircon-log-heading strong { font-size: 12px; }.aircon-log-heading span { color: var(--muted); font: 9px "DM Mono", monospace; }
+.aircon-automation-log { display: grid; gap: 6px; }
+.aircon-log-row { min-width: 0; padding: 10px 12px; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid #c8d6dd; background: rgba(255,255,255,.82); }
+.aircon-log-command { padding: 5px 7px; border-radius: 999px; color: #fff; background: #1887a0; font: 800 10px "DM Mono", monospace; text-align: center; }.aircon-log-command.is-off { background: #44536b; }
+.aircon-log-copy { min-width: 0; display: grid; gap: 2px; }.aircon-log-copy strong { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.aircon-log-copy small { color: var(--muted); font-size: 9px; }
+.aircon-log-state { color: #13725b; font-size: 9px; font-weight: 800; white-space: nowrap; }.aircon-log-state.is-skipped { color: #9a5d13; }
+
+@media (max-width: 600px) {
+  .aircon-rule-grid { grid-template-columns: 1fr; }.aircon-rule-grid article { min-height: 62px; }
+  .aircon-test-actions { display: grid; grid-template-columns: 1fr 1fr; }.aircon-test-actions .text-button { grid-column: 1 / -1; margin: 2px 0 0; justify-self: end; }
+  .aircon-log-row { grid-template-columns: 44px minmax(0, 1fr); }.aircon-log-state { grid-column: 2; }
+}

@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260823.3";
+const APP_VERSION = "20260921.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -109,6 +109,7 @@ const state = {
   memberRoster: [],
   equipmentPhotoDataUrl: "",
   usageStats: null,
+  airConditionerAutomation: null,
   room: DEFAULT_ROOM,
   activeTab: "home",
   calendarView: "month",
@@ -183,6 +184,7 @@ function setActiveTab(tab, options = {}) {
   if (nextTab === "menu" && state.profile?.role === "main_admin") {
     loadMonthlyUsageStats();
     loadMemberRoster();
+    loadAirConditionerAutomation();
   }
   if (scroll) window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
 }
@@ -2186,6 +2188,94 @@ async function loadMemberRoster() {
   }
 }
 
+const AIRCON_REASON_LABELS = {
+  pre_start: "합주 시작 5분 전",
+  post_end: "합주 종료 5분 후",
+  daily_safety: "합주 있는 날 23:59 안전 종료",
+  manual_test: "관리자 수동 테스트",
+  reservation_cancelled: "예약 취소 후 안전 종료",
+  reservation_updated: "예약 변경 후 안전 확인",
+};
+
+function airconLogDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "시간 확인 중";
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
+function renderAirConditionerAutomation() {
+  if (!elements.airconAutomationLog || state.profile?.role !== "main_admin") return;
+  const automation = state.airConditionerAutomation;
+  if (!automation) {
+    elements.airconAutomationLog.innerHTML = '<p class="empty-message">자동화 정보를 불러오는 중입니다.</p>';
+    return;
+  }
+  const settings = automation.settings || {};
+  elements.airconAutomationEnabled.checked = settings.enabled !== false;
+  elements.airconAutomationStatus.textContent = `테스트 모드 · ${settings.enabled === false ? "꺼짐" : "작동 중"}`;
+  const runs = Array.isArray(automation.runs) ? automation.runs : [];
+  elements.airconAutomationLog.innerHTML = runs.length ? runs.map((run) => {
+    const isSkipped = run.status === "skipped";
+    const stateLabel = isSkipped ? "건너뜀" : (run.status === "simulated" ? "테스트 완료" : "처리 중");
+    const detail = run.skipReason || run.bandName || (run.reason === "manual_test" ? "기기 없이 명령 기록" : run.date || "예약 자동화");
+    return `
+      <article class="aircon-log-row">
+        <span class="aircon-log-command ${run.command === "off" ? "is-off" : ""}">${escapeHtml(String(run.command || "-").toUpperCase())}</span>
+        <div class="aircon-log-copy"><strong>${escapeHtml(AIRCON_REASON_LABELS[run.reason] || "에어컨 자동화")}</strong><small>${escapeHtml(detail)} · ${escapeHtml(airconLogDate(run.executedAt || run.scheduledFor))}</small></div>
+        <span class="aircon-log-state ${isSkipped ? "is-skipped" : ""}">${stateLabel}</span>
+      </article>`;
+  }).join("") : '<p class="empty-message">아직 실행 기록이 없습니다. ON/OFF 테스트로 먼저 확인할 수 있습니다.</p>';
+}
+
+async function loadAirConditionerAutomation() {
+  if (state.profile?.role !== "main_admin") return;
+  state.airConditionerAutomation = null;
+  renderAirConditionerAutomation();
+  try {
+    const result = await call("getAirConditionerAutomation");
+    state.airConditionerAutomation = result.data || { settings: { enabled: true }, runs: [] };
+    renderAirConditionerAutomation();
+  } catch (error) {
+    elements.airconAutomationLog.innerHTML = '<p class="empty-message">자동화 정보를 불러올 수 없습니다.</p>';
+    showToast(errorMessage(error), true);
+  }
+}
+
+async function handleAirConditionerAutomationSettings(event) {
+  event.preventDefault();
+  const submitButton = elements.airConditionerAutomationForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    await call("updateAirConditionerAutomation", { enabled: elements.airconAutomationEnabled.checked });
+    await loadAirConditionerAutomation();
+    showToast(`에어컨 자동화를 ${elements.airconAutomationEnabled.checked ? "켰습니다" : "껐습니다"}.`);
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function testAirConditionerAutomation(command, button) {
+  button.disabled = true;
+  try {
+    await call("testAirConditionerAutomation", { command });
+    await loadAirConditionerAutomation();
+    showToast(`${command.toUpperCase()} 테스트 기록을 남겼습니다. 실제 기기 신호는 보내지 않았습니다.`);
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderUsageStats() {
   if (!elements.usageStatsSummary || state.profile?.role !== "main_admin") return;
   const stats = state.usageStats;
@@ -2295,6 +2385,10 @@ function bindEvents() {
   elements.removeBandLogoButton.addEventListener("click", handleBandLogoRemove);
   elements.announcementForm.addEventListener("submit", handleAnnouncement);
   elements.settingsForm.addEventListener("submit", handleSettings);
+  elements.airConditionerAutomationForm.addEventListener("submit", handleAirConditionerAutomationSettings);
+  elements.airconOnTestButton.addEventListener("click", () => testAirConditionerAutomation("on", elements.airconOnTestButton));
+  elements.airconOffTestButton.addEventListener("click", () => testAirConditionerAutomation("off", elements.airconOffTestButton));
+  elements.airconRefreshButton.addEventListener("click", loadAirConditionerAutomation);
   elements.signOutButton.addEventListener("click", async () => {
     await unregisterPushForSignOut();
     forgetLoginId();
@@ -2449,11 +2543,13 @@ function initialise() {
         loadAvailabilityPolls(),
         state.profile.role === "main_admin" ? loadMonthlyUsageStats() : Promise.resolve(),
         state.profile.role === "main_admin" ? loadMemberRoster() : Promise.resolve(),
+        state.profile.role === "main_admin" ? loadAirConditionerAutomation() : Promise.resolve(),
       ]);
     } else {
       state.pushToken = "";
       state.equipmentReports = [];
       state.usageStats = null;
+      state.airConditionerAutomation = null;
       clearAppSubscriptions();
       loadPublicReservations();
       loadMonthReservations();

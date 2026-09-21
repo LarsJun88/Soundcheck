@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260823.3" />
+    <meta name="soundcheck-version" content="20260921.1" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260823.3" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260921.1" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260823.3" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260823.3" />
+    <link rel="stylesheet" href="./styles.css?v=20260921.1" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260921.1" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -286,6 +286,29 @@
             <button class="button button-light form-submit" type="submit">운영 시간 저장</button>
             <p class="form-help">새 예약에 즉시 적용됩니다. 기존 예약은 유지됩니다.</p>
           </form>
+          <form id="airConditionerAutomationForm" class="panel aircon-automation-panel">
+            <div class="panel-heading">
+              <h3>에어컨 자동화</h3>
+              <span id="airconAutomationStatus">테스트 모드</span>
+            </div>
+            <label class="aircon-toggle">
+              <input id="airconAutomationEnabled" type="checkbox" checked />
+              <span><strong>예약 시간에 맞춰 자동 실행</strong><small>지금은 실제 기기 신호 없이 실행 기록만 남깁니다.</small></span>
+            </label>
+            <div class="aircon-rule-grid" aria-label="에어컨 자동 실행 시간">
+              <article><strong>ON</strong><span>합주 시작 5분 전</span></article>
+              <article><strong>OFF</strong><span>합주 종료 5분 후</span></article>
+              <article><strong>OFF</strong><span>합주 있는 날 23:59</span></article>
+            </div>
+            <button class="button button-primary form-submit" type="submit">자동화 설정 저장</button>
+            <div class="aircon-test-actions">
+              <button id="airconOnTestButton" class="button button-ghost" type="button">ON 테스트 기록</button>
+              <button id="airconOffTestButton" class="button button-ghost" type="button">OFF 테스트 기록</button>
+              <button id="airconRefreshButton" class="text-button" type="button">기록 새로고침</button>
+            </div>
+            <div class="aircon-log-heading"><strong>최근 실행 기록</strong><span>최대 20개</span></div>
+            <div id="airconAutomationLog" class="aircon-automation-log" aria-live="polite"><p class="empty-message">자동화 정보를 불러오는 중입니다.</p></div>
+          </form>
           <form id="bandLogoForm" class="panel band-logo-panel">
             <div class="panel-heading"><h3>밴드 로고 관리</h3><span>메인 화면 공개</span></div>
             <div class="band-logo-editor">
@@ -446,6 +469,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260823.3"></script>
+    <script type="module" src="./app.js?v=20260921.1"></script>
   </body>
 </html>

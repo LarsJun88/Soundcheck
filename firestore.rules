@@ -70,6 +70,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Air-conditioner automation settings and execution logs are managed only
+    // by trusted callable/scheduled functions. Admins view them through a
+    // callable function so device credentials never need to reach the browser.
+    match /settings/airConditionerAutomation {
+      allow read, write: if false;
+    }
+
+    match /airConditionerAutomationRuns/{runId} {
+      allow read, write: if false;
+    }
+
     // Equipment reports may include private photos and are only accessed through
     // callable functions, which enforce band-member and main-admin permissions.
     match /equipmentReports/{reportId} {
