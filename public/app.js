@@ -30,7 +30,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260921.1";
+const APP_VERSION = "20260921.2";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -110,6 +110,8 @@ const state = {
   equipmentPhotoDataUrl: "",
   usageStats: null,
   airConditionerAutomation: null,
+  iotExtraSchedules: [],
+  adminSection: "operations",
   room: DEFAULT_ROOM,
   activeTab: "home",
   calendarView: "month",
@@ -187,6 +189,21 @@ function setActiveTab(tab, options = {}) {
     loadAirConditionerAutomation();
   }
   if (scroll) window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+}
+
+function setAdminSection(section) {
+  const nextSection = section === "iot" ? "iot" : "operations";
+  state.adminSection = nextSection;
+  document.querySelectorAll("#adminArea [data-admin-view]").forEach((view) => {
+    view.hidden = view.dataset.adminView !== nextSection;
+  });
+  document.querySelectorAll("#adminSectionNavigation [data-admin-section]").forEach((button) => {
+    const selected = button.dataset.adminSection === nextSection;
+    button.classList.toggle("is-active", selected);
+    if (selected) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  if (nextSection === "iot" && state.profile?.role === "main_admin") loadAirConditionerAutomation();
 }
 const LOGIN_ID_PATTERN = /^[가-힣a-z0-9_-]{2,12}$/i;
 
@@ -2195,6 +2212,7 @@ const AIRCON_REASON_LABELS = {
   manual_test: "관리자 수동 테스트",
   reservation_cancelled: "예약 취소 후 안전 종료",
   reservation_updated: "예약 변경 후 안전 확인",
+  extra_schedule: "추가 자동 실행 시간",
 };
 
 function airconLogDate(value) {
@@ -2210,6 +2228,41 @@ function airconLogDate(value) {
   }).format(date);
 }
 
+function renderIotExtraSchedules() {
+  if (!elements.iotExtraScheduleList) return;
+  const schedules = Array.isArray(state.iotExtraSchedules) ? state.iotExtraSchedules : [];
+  elements.iotExtraScheduleList.innerHTML = schedules.length ? schedules.map((schedule, index) => `
+    <div class="iot-extra-schedule-row" data-iot-schedule-row>
+      <label>명령<select data-iot-command>
+        <option value="on" ${schedule.command === "on" ? "selected" : ""}>ON</option>
+        <option value="off" ${schedule.command === "off" ? "selected" : ""}>OFF</option>
+      </select></label>
+      <label>실행 시간<input data-iot-time type="time" value="${escapeHtml(schedule.time || "23:00")}" required /></label>
+      <label>적용 조건<select data-iot-scope>
+        <option value="reservation_day" ${schedule.scope !== "daily" ? "selected" : ""}>합주 있는 날</option>
+        <option value="daily" ${schedule.scope === "daily" ? "selected" : ""}>매일</option>
+      </select></label>
+      <button class="iot-schedule-remove" type="button" data-remove-iot-schedule="${index}" aria-label="이 자동 실행 시간 삭제">×</button>
+    </div>`).join("") : '<p class="iot-extra-empty">추가 시간이 없습니다. 필요한 경우 ‘시간 추가’를 눌러 등록하세요.</p>';
+  elements.iotAddScheduleButton.disabled = schedules.length >= 12;
+}
+
+function collectIotExtraSchedules() {
+  return [...elements.iotExtraScheduleList.querySelectorAll("[data-iot-schedule-row]")].map((row) => ({
+    command: row.querySelector("[data-iot-command]").value,
+    time: row.querySelector("[data-iot-time]").value,
+    scope: row.querySelector("[data-iot-scope]").value,
+  }));
+}
+
+function addIotExtraSchedule() {
+  state.iotExtraSchedules = collectIotExtraSchedules();
+  if (state.iotExtraSchedules.length >= 12) return showToast("추가 자동 실행은 최대 12개까지 설정할 수 있습니다.", true);
+  state.iotExtraSchedules.push({ command: "off", time: "23:00", scope: "reservation_day" });
+  renderIotExtraSchedules();
+  elements.iotExtraScheduleList.querySelector("[data-iot-schedule-row]:last-child [data-iot-time]")?.focus();
+}
+
 function renderAirConditionerAutomation() {
   if (!elements.airconAutomationLog || state.profile?.role !== "main_admin") return;
   const automation = state.airConditionerAutomation;
@@ -2218,13 +2271,26 @@ function renderAirConditionerAutomation() {
     return;
   }
   const settings = automation.settings || {};
+  const integration = automation.integration || {};
   elements.airconAutomationEnabled.checked = settings.enabled !== false;
-  elements.airconAutomationStatus.textContent = `테스트 모드 · ${settings.enabled === false ? "꺼짐" : "작동 중"}`;
+  elements.airconPreStartMinutes.value = String(Number(settings.preStartMinutes ?? 5));
+  elements.airconPostEndMinutes.value = String(Number(settings.postEndMinutes ?? 5));
+  elements.iotDeviceId.value = integration.deviceId || "";
+  elements.iotAccessToken.value = "";
+  elements.iotAccessToken.placeholder = integration.hasToken ? `저장된 토큰 유지 (${integration.tokenHint || "등록됨"})` : "발급받은 토큰 입력";
+  elements.iotTokenStatus.textContent = integration.hasToken ? `토큰 저장됨 ${integration.tokenHint || ""}` : "토큰 미등록";
+  elements.iotClearTokenButton.classList.toggle("hidden", !integration.hasToken);
+  elements.airconAutomationStatus.textContent = `${integration.ready ? "연동 정보 준비됨" : "연결 정보 필요"} · 테스트 모드`;
+  state.iotExtraSchedules = Array.isArray(settings.extraSchedules) ? settings.extraSchedules.map((schedule) => ({ ...schedule })) : [];
+  renderIotExtraSchedules();
   const runs = Array.isArray(automation.runs) ? automation.runs : [];
   elements.airconAutomationLog.innerHTML = runs.length ? runs.map((run) => {
     const isSkipped = run.status === "skipped";
     const stateLabel = isSkipped ? "건너뜀" : (run.status === "simulated" ? "테스트 완료" : "처리 중");
-    const detail = run.skipReason || run.bandName || (run.reason === "manual_test" ? "기기 없이 명령 기록" : run.date || "예약 자동화");
+    const scopeLabel = run.scheduleScope === "daily" ? "매일" : "합주 있는 날";
+    const detail = run.skipReason || run.bandName || (run.reason === "manual_test"
+      ? "기기 없이 명령 기록"
+      : (run.reason === "extra_schedule" ? `${run.scheduleTime || "설정 시각"} · ${scopeLabel}` : run.date || "예약 자동화"));
     return `
       <article class="aircon-log-row">
         <span class="aircon-log-command ${run.command === "off" ? "is-off" : ""}">${escapeHtml(String(run.command || "-").toUpperCase())}</span>
@@ -2253,13 +2319,42 @@ async function handleAirConditionerAutomationSettings(event) {
   const submitButton = elements.airConditionerAutomationForm.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   try {
-    await call("updateAirConditionerAutomation", { enabled: elements.airconAutomationEnabled.checked });
+    await call("updateAirConditionerAutomation", {
+      enabled: elements.airconAutomationEnabled.checked,
+      preStartMinutes: Number(elements.airconPreStartMinutes.value),
+      postEndMinutes: Number(elements.airconPostEndMinutes.value),
+      deviceId: elements.iotDeviceId.value.trim(),
+      accessToken: elements.iotAccessToken.value.trim(),
+      extraSchedules: collectIotExtraSchedules(),
+    });
     await loadAirConditionerAutomation();
-    showToast(`에어컨 자동화를 ${elements.airconAutomationEnabled.checked ? "켰습니다" : "껐습니다"}.`);
+    showToast("IoT 연동과 자동 실행 시간을 저장했습니다.");
   } catch (error) {
     showToast(errorMessage(error), true);
   } finally {
     submitButton.disabled = false;
+  }
+}
+
+async function clearIotAccessToken() {
+  if (!window.confirm("서버에 저장된 헤이홈 API 토큰을 삭제할까요?")) return;
+  elements.iotClearTokenButton.disabled = true;
+  try {
+    await call("updateAirConditionerAutomation", {
+      enabled: elements.airconAutomationEnabled.checked,
+      preStartMinutes: Number(elements.airconPreStartMinutes.value),
+      postEndMinutes: Number(elements.airconPostEndMinutes.value),
+      deviceId: elements.iotDeviceId.value.trim(),
+      accessToken: "",
+      clearToken: true,
+      extraSchedules: collectIotExtraSchedules(),
+    });
+    await loadAirConditionerAutomation();
+    showToast("저장된 헤이홈 API 토큰을 삭제했습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    elements.iotClearTokenButton.disabled = false;
   }
 }
 
@@ -2336,6 +2431,10 @@ function bindEvents() {
     const tab = event.target.closest("[data-tab-target]")?.dataset.tabTarget;
     if (tab) setActiveTab(tab);
   });
+  elements.adminSectionNavigation.addEventListener("click", (event) => {
+    const section = event.target.closest("[data-admin-section]")?.dataset.adminSection;
+    if (section) setAdminSection(section);
+  });
   document.querySelectorAll("[data-open-tab]").forEach((button) => button.addEventListener("click", (event) => {
     event.preventDefault();
     setActiveTab(button.dataset.openTab);
@@ -2389,6 +2488,15 @@ function bindEvents() {
   elements.airconOnTestButton.addEventListener("click", () => testAirConditionerAutomation("on", elements.airconOnTestButton));
   elements.airconOffTestButton.addEventListener("click", () => testAirConditionerAutomation("off", elements.airconOffTestButton));
   elements.airconRefreshButton.addEventListener("click", loadAirConditionerAutomation);
+  elements.iotClearTokenButton.addEventListener("click", clearIotAccessToken);
+  elements.iotAddScheduleButton.addEventListener("click", addIotExtraSchedule);
+  elements.iotExtraScheduleList.addEventListener("click", (event) => {
+    const indexText = event.target.closest("[data-remove-iot-schedule]")?.dataset.removeIotSchedule;
+    if (indexText === undefined) return;
+    state.iotExtraSchedules = collectIotExtraSchedules();
+    state.iotExtraSchedules.splice(Number(indexText), 1);
+    renderIotExtraSchedules();
+  });
   elements.signOutButton.addEventListener("click", async () => {
     await unregisterPushForSignOut();
     forgetLoginId();
@@ -2514,6 +2622,7 @@ function initialise() {
   updateTrashNotificationUi();
   applyRoomToControls();
   bindEvents();
+  setAdminSection("operations");
   setActiveTab(tabFromLocationHash(), { updateHash: false, scroll: false });
   setupAppInstall();
   registerServiceWorker();

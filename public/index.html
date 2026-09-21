@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20260921.1" />
+    <meta name="soundcheck-version" content="20260921.2" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260921.1" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260921.2" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260921.1" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20260921.1" />
+    <link rel="stylesheet" href="./styles.css?v=20260921.2" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20260921.2" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -257,8 +257,12 @@
         <div class="tab-guest-card"><span class="guest-symbol">⚙</span><p class="eyebrow">GEAR CHECK</p><h2 id="equipmentGuestTitle">로그인하고 장비를 확인하세요</h2><p>합주실 장비 상태를 확인하고 사진과 함께 이상을 신고할 수 있습니다.</p><button id="equipmentLoginButton" class="button button-primary" type="button">로그인 / 계정 만들기</button></div>
       </section>
       <section id="adminArea" class="admin-area page-width hidden" data-tab-view="menu" hidden aria-label="메인 관리자 도구">
-        <div class="section-heading"><div><p class="eyebrow">MAIN ADMIN ONLY</p><h2>운영 관리</h2></div></div>
-        <div class="admin-grid">
+        <div class="section-heading"><div><p class="eyebrow">MAIN ADMIN ONLY</p><h2>관리자 메뉴</h2></div></div>
+        <nav id="adminSectionNavigation" class="admin-section-navigation" aria-label="관리자 메뉴">
+          <button class="is-active" type="button" data-admin-section="operations" aria-current="page"><span>OPERATIONS</span><strong>운영 관리</strong></button>
+          <button type="button" data-admin-section="iot"><span>SMART ROOM</span><strong>IoT 연동</strong></button>
+        </nav>
+        <div class="admin-grid" data-admin-view="operations">
           <form id="bandForm" class="panel">
             <div class="panel-heading"><h3>밴드 추가</h3><span>가입 리스트 등록</span></div>
             <label>밴드 이름<input id="bandName" maxlength="40" required placeholder="예: 오후의 잡음" /></label>
@@ -286,29 +290,6 @@
             <button class="button button-light form-submit" type="submit">운영 시간 저장</button>
             <p class="form-help">새 예약에 즉시 적용됩니다. 기존 예약은 유지됩니다.</p>
           </form>
-          <form id="airConditionerAutomationForm" class="panel aircon-automation-panel">
-            <div class="panel-heading">
-              <h3>에어컨 자동화</h3>
-              <span id="airconAutomationStatus">테스트 모드</span>
-            </div>
-            <label class="aircon-toggle">
-              <input id="airconAutomationEnabled" type="checkbox" checked />
-              <span><strong>예약 시간에 맞춰 자동 실행</strong><small>지금은 실제 기기 신호 없이 실행 기록만 남깁니다.</small></span>
-            </label>
-            <div class="aircon-rule-grid" aria-label="에어컨 자동 실행 시간">
-              <article><strong>ON</strong><span>합주 시작 5분 전</span></article>
-              <article><strong>OFF</strong><span>합주 종료 5분 후</span></article>
-              <article><strong>OFF</strong><span>합주 있는 날 23:59</span></article>
-            </div>
-            <button class="button button-primary form-submit" type="submit">자동화 설정 저장</button>
-            <div class="aircon-test-actions">
-              <button id="airconOnTestButton" class="button button-ghost" type="button">ON 테스트 기록</button>
-              <button id="airconOffTestButton" class="button button-ghost" type="button">OFF 테스트 기록</button>
-              <button id="airconRefreshButton" class="text-button" type="button">기록 새로고침</button>
-            </div>
-            <div class="aircon-log-heading"><strong>최근 실행 기록</strong><span>최대 20개</span></div>
-            <div id="airconAutomationLog" class="aircon-automation-log" aria-live="polite"><p class="empty-message">자동화 정보를 불러오는 중입니다.</p></div>
-          </form>
           <form id="bandLogoForm" class="panel band-logo-panel">
             <div class="panel-heading"><h3>밴드 로고 관리</h3><span>메인 화면 공개</span></div>
             <div class="band-logo-editor">
@@ -325,7 +306,62 @@
             </div>
           </form>
         </div>
-        <section class="member-roster" aria-labelledby="memberRosterTitle">
+        <section id="adminIotView" class="admin-iot-view" data-admin-view="iot" hidden aria-labelledby="adminIotTitle">
+          <div class="iot-view-heading">
+            <div><p class="eyebrow">SMART ROOM AUTOMATION</p><h2 id="adminIotTitle">IoT 연동</h2><p>헤이홈 연결 정보와 예약 기반 에어컨 실행 시간을 관리합니다.</p></div>
+            <span id="airconAutomationStatus" class="iot-status-badge">설정 확인 중</span>
+          </div>
+          <form id="airConditionerAutomationForm" class="panel aircon-automation-panel">
+            <div class="iot-settings-grid">
+              <section class="iot-settings-block" aria-labelledby="iotConnectionTitle">
+                <div class="panel-heading"><h3 id="iotConnectionTitle">헤이홈 연결</h3><span id="iotTokenStatus">토큰 미등록</span></div>
+                <label>API 토큰
+                  <input id="iotAccessToken" type="password" maxlength="4096" autocomplete="new-password" placeholder="발급받은 토큰 입력" />
+                </label>
+                <label>기기 ID
+                  <input id="iotDeviceId" maxlength="200" autocomplete="off" placeholder="에어컨 리모컨 기기 ID" />
+                </label>
+                <div class="iot-token-actions">
+                  <p class="form-help">토큰은 서버 전용 영역에 저장되며 저장 후 다시 화면에 표시하지 않습니다.</p>
+                  <button id="iotClearTokenButton" class="text-button hidden" type="button">저장된 토큰 삭제</button>
+                </div>
+                <p class="iot-simulation-note">현재는 테스트 모드입니다. 헤이홈의 실제 에어컨 명령 규격을 확인한 뒤 실기기 제어를 활성화합니다.</p>
+              </section>
+              <section class="iot-settings-block" aria-labelledby="iotTimingTitle">
+                <div class="panel-heading"><h3 id="iotTimingTitle">예약 연동 시간</h3><span>0~180분</span></div>
+                <label class="aircon-toggle">
+                  <input id="airconAutomationEnabled" type="checkbox" checked />
+                  <span><strong>예약 기반 자동화 사용</strong><small>꺼두면 모든 예약 및 추가 시간 자동 실행을 중지합니다.</small></span>
+                </label>
+                <div class="iot-minute-grid">
+                  <label>합주 시작 전 ON
+                    <span><input id="airconPreStartMinutes" type="number" min="0" max="180" step="1" value="5" required /><em>분 전</em></span>
+                  </label>
+                  <label>합주 종료 후 OFF
+                    <span><input id="airconPostEndMinutes" type="number" min="0" max="180" step="1" value="5" required /><em>분 후</em></span>
+                  </label>
+                </div>
+                <div class="aircon-fixed-safety"><strong>안전 OFF</strong><span>합주가 있는 날 23:59에 한 번 더 종료</span></div>
+              </section>
+            </div>
+            <section class="iot-extra-section" aria-labelledby="iotExtraTitle">
+              <div class="panel-heading">
+                <div><h3 id="iotExtraTitle">추가 ON/OFF 시간</h3><p>정해진 시각에 매일 또는 합주가 있는 날만 실행합니다.</p></div>
+                <button id="iotAddScheduleButton" class="button button-ghost" type="button">＋ 시간 추가</button>
+              </div>
+              <div id="iotExtraScheduleList" class="iot-extra-schedule-list"></div>
+            </section>
+            <button class="button button-primary form-submit iot-save-button" type="submit">IoT 연동 설정 저장</button>
+            <div class="aircon-test-actions">
+              <button id="airconOnTestButton" class="button button-ghost" type="button">ON 테스트 기록</button>
+              <button id="airconOffTestButton" class="button button-ghost" type="button">OFF 테스트 기록</button>
+              <button id="airconRefreshButton" class="text-button" type="button">설정·기록 새로고침</button>
+            </div>
+            <div class="aircon-log-heading"><strong>최근 실행 기록</strong><span>최대 20개</span></div>
+            <div id="airconAutomationLog" class="aircon-automation-log" aria-live="polite"><p class="empty-message">자동화 정보를 불러오는 중입니다.</p></div>
+          </form>
+        </section>
+        <section class="member-roster" data-admin-view="operations" aria-labelledby="memberRosterTitle">
           <div class="section-heading member-roster-heading">
             <div><p class="eyebrow">ACCOUNT DIRECTORY</p><h2 id="memberRosterTitle">가입자 명단</h2></div>
             <div class="member-roster-actions"><span id="memberRosterCount">0명</span><button id="memberRosterRefreshButton" class="text-button" type="button">새로고침</button></div>
@@ -335,7 +371,7 @@
             <div id="memberRosterList" class="member-roster-list" aria-live="polite"><p class="empty-message">가입자 명단을 불러오는 중입니다.</p></div>
           </div>
         </section>
-        <section class="usage-stats" aria-labelledby="usageStatsTitle">
+        <section class="usage-stats" data-admin-view="operations" aria-labelledby="usageStatsTitle">
           <div class="section-heading stats-heading">
             <div><p class="eyebrow">ROOM INSIGHTS</p><h2 id="usageStatsTitle">월별 이용 통계</h2></div>
             <label class="stats-month-label">조회 월<input id="statsMonth" type="month" /></label>
@@ -346,7 +382,7 @@
             <div class="panel"><div class="panel-heading"><h3>인기 시간대</h3><span>상위 3개</span></div><div id="popularHoursList" class="popular-hours-list"></div></div>
           </div>
         </section>
-        <div id="inviteResult" class="invite-result hidden" role="status"></div>
+        <div id="inviteResult" class="invite-result hidden" data-admin-view="operations" role="status"></div>
       </section>
     </main>
 
@@ -469,6 +505,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20260921.1"></script>
+    <script type="module" src="./app.js?v=20260921.2"></script>
   </body>
 </html>

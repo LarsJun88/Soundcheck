@@ -693,3 +693,26 @@ main { min-height: calc(100dvh - 172px); }
   .aircon-test-actions { display: grid; grid-template-columns: 1fr 1fr; }.aircon-test-actions .text-button { grid-column: 1 / -1; margin: 2px 0 0; justify-self: end; }
   .aircon-log-row { grid-template-columns: 44px minmax(0, 1fr); }.aircon-log-state { grid-column: 2; }
 }
+
+/* ADMIN SUBMENU + IOT SETTINGS · 20260921 */
+.admin-section-navigation { margin: -8px 0 28px; padding: 6px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; border: 1px solid #91aeba; border-radius: 16px; background: rgba(5,17,55,.94); box-shadow: 5px 5px 0 rgba(7,20,61,.14); }
+.admin-section-navigation button { min-height: 62px; padding: 10px 18px; display: grid; place-items: center; gap: 2px; border: 0; border-radius: 11px; color: rgba(255,255,255,.62); background: transparent; }
+.admin-section-navigation button span { font: 500 8px "DM Mono", monospace; letter-spacing: 1.2px; }.admin-section-navigation button strong { font: 800 14px "Montserrat", "Gowun Dodum", sans-serif; }
+.admin-section-navigation button.is-active { color: #06153b; background: var(--acid); box-shadow: 0 5px 15px rgba(82,200,208,.2); }
+.admin-iot-view { padding-bottom: 36px; }.iot-view-heading { margin: 8px 0 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }.iot-view-heading h2 { margin: 4px 0 6px; }.iot-view-heading > div > p:last-child { margin: 0; color: var(--muted); font-size: 12px; }
+.iot-status-badge { flex: 0 0 auto; padding: 7px 11px; border: 1px solid #7eb5bf; border-radius: 999px; color: #0d6172; background: #def5f4; font-size: 10px; font-weight: 800; }
+.iot-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }.iot-settings-block { min-width: 0; padding: 18px; border: 1px solid #bdd0d8; background: rgba(255,255,255,.78); }.iot-settings-block label { margin-top: 11px; }
+.iot-token-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }.iot-token-actions .form-help { flex: 1; }.iot-token-actions .text-button { flex: 0 0 auto; margin-top: 9px; color: #a13b52; }
+.iot-simulation-note { margin: 15px 0 0; padding: 10px 12px; border-left: 4px solid #e29c35; color: #6e4b15; background: #fff2d9; font-size: 10px; line-height: 1.55; }
+.iot-minute-grid { margin-top: 13px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.iot-minute-grid label { margin: 0; }.iot-minute-grid label > span { margin-top: 6px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; }.iot-minute-grid em { color: var(--muted); font-size: 10px; font-style: normal; }
+.aircon-fixed-safety { margin-top: 13px; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #c5d5dc; border-left: 4px solid var(--signal); background: #f4fafb; }.aircon-fixed-safety strong { color: var(--signal); font: 800 10px "DM Mono", monospace; }.aircon-fixed-safety span { color: var(--ink); font-size: 10px; font-weight: 700; text-align: right; }
+.iot-extra-section { margin-top: 22px; padding-top: 21px; border-top: 1px solid #bdd0d8; }.iot-extra-section .panel-heading { align-items: center; }.iot-extra-section .panel-heading h3 { margin-bottom: 4px; }.iot-extra-section .panel-heading p { margin: 0; color: var(--muted); font-size: 10px; }.iot-extra-section .button { min-height: 38px; padding: 8px 13px; }
+.iot-extra-schedule-list { display: grid; gap: 8px; }.iot-extra-schedule-row { padding: 10px; display: grid; grid-template-columns: .7fr 1fr 1.2fr 36px; align-items: end; gap: 8px; border: 1px solid #c3d3da; background: rgba(255,255,255,.82); }.iot-extra-schedule-row label { margin: 0; }.iot-schedule-remove { width: 36px; height: 40px; border: 1px solid #d7a6af; border-radius: 3px; color: #a13b52; background: #fff1f3; font-size: 19px; }.iot-extra-empty { margin: 0; padding: 25px 16px; border: 1px dashed #aebfc7; color: var(--muted); background: rgba(255,255,255,.45); font-size: 11px; text-align: center; }
+.iot-save-button { margin-top: 20px; }.admin-iot-view .aircon-automation-panel { box-shadow: 7px 7px 0 rgba(7,20,61,.12); }
+
+@media (max-width: 700px) {
+  .admin-section-navigation { margin-top: -12px; }.admin-section-navigation button { min-height: 55px; padding-inline: 8px; }
+  .iot-view-heading { align-items: flex-start; flex-direction: column; gap: 11px; }.iot-settings-grid { grid-template-columns: 1fr; gap: 13px; }.iot-settings-block { padding: 14px; }
+  .iot-minute-grid { grid-template-columns: 1fr 1fr; }.iot-extra-section .panel-heading { align-items: stretch; }.iot-extra-section .button { width: 100%; }
+  .iot-extra-schedule-row { grid-template-columns: 1fr 1fr 36px; }.iot-extra-schedule-row label:nth-child(3) { grid-column: 1 / 3; }.iot-schedule-remove { grid-column: 3; grid-row: 1 / 3; align-self: stretch; height: auto; }
+}

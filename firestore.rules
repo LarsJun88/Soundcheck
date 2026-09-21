@@ -77,6 +77,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // The access token is intentionally never readable from the web client.
+    // Only trusted Cloud Functions can store or use the IoT connection data.
+    match /settings/iotIntegration {
+      allow read, write: if false;
+    }
+
     match /airConditionerAutomationRuns/{runId} {
       allow read, write: if false;
     }

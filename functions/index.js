@@ -28,6 +28,9 @@ const MAX_RESERVATION_NOTE_LENGTH = 120;
 const MAX_DISPLAY_NAME_LENGTH = 40;
 const MAX_AVAILABILITY_POLL_TITLE_LENGTH = 50;
 const MAX_AVAILABILITY_POLL_DATES = 31;
+const MAX_IOT_EXTRA_SCHEDULES = 12;
+const MAX_IOT_TOKEN_LENGTH = 4096;
+const MAX_IOT_DEVICE_ID_LENGTH = 200;
 const DEFAULT_AIRCON_AUTOMATION_SETTINGS = Object.freeze({
   enabled: true,
   mode: "simulation",
@@ -35,6 +38,7 @@ const DEFAULT_AIRCON_AUTOMATION_SETTINGS = Object.freeze({
   postEndMinutes: 5,
   safetyOffHour: 23,
   safetyOffMinute: 59,
+  extraSchedules: [],
 });
 const AIRCON_EVENT_LATE_TOLERANCE_MS = 75 * 1000;
 const AIRCON_EVENT_EARLY_TOLERANCE_MS = 15 * 1000;
@@ -340,15 +344,91 @@ async function dueReservations(definition, now = new Date()) {
     .filter((reservation) => reservation.status === "confirmed");
 }
 
+function automationMinute(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && number <= 180 ? number : fallback;
+}
+
+function iotScheduleId(command, time, scope) {
+  return crypto.createHash("sha256").update(`${command}|${time}|${scope}`).digest("hex").slice(0, 16);
+}
+
+function normaliseIotExtraSchedules(value, strict = false) {
+  if (!Array.isArray(value)) {
+    if (strict) badRequest("추가 자동 실행 시간을 확인해 주세요.");
+    return [];
+  }
+  if (value.length > MAX_IOT_EXTRA_SCHEDULES) {
+    if (strict) badRequest(`추가 자동 실행은 최대 ${MAX_IOT_EXTRA_SCHEDULES}개까지 설정할 수 있습니다.`);
+    value = value.slice(0, MAX_IOT_EXTRA_SCHEDULES);
+  }
+  const schedules = [];
+  const keys = new Set();
+  for (const item of value) {
+    const command = String(item?.command || "").toLowerCase();
+    const time = String(item?.time || "");
+    const scope = String(item?.scope || "reservation_day");
+    const [hour, minute] = time.split(":").map(Number);
+    const valid = new Set(["on", "off"]).has(command)
+      && /^\d{2}:\d{2}$/.test(time)
+      && Number.isInteger(hour) && hour >= 0 && hour <= 23
+      && Number.isInteger(minute) && minute >= 0 && minute <= 59
+      && new Set(["reservation_day", "daily"]).has(scope);
+    if (!valid) {
+      if (strict) badRequest("추가 ON/OFF 시간 또는 적용 조건을 확인해 주세요.");
+      continue;
+    }
+    const key = `${command}|${time}|${scope}`;
+    if (keys.has(key)) {
+      if (strict) badRequest("같은 추가 자동 실행 시간이 중복되어 있습니다.");
+      continue;
+    }
+    keys.add(key);
+    schedules.push({ id: iotScheduleId(command, time, scope), command, time, scope });
+  }
+  return schedules;
+}
+
+async function getIotIntegrationSummary() {
+  const snapshot = await db.collection("settings").doc("iotIntegration").get();
+  const data = snapshot.exists ? snapshot.data() : {};
+  const token = String(data.accessToken || "");
+  const deviceId = String(data.deviceId || "").slice(0, MAX_IOT_DEVICE_ID_LENGTH);
+  return {
+    provider: "heyhome",
+    deviceId,
+    hasToken: Boolean(token),
+    tokenHint: token ? `••••${token.slice(-4)}` : "",
+    ready: Boolean(token && deviceId),
+  };
+}
+
 async function getAirConditionerAutomationSettings() {
   const snapshot = await db.collection("settings").doc("airConditionerAutomation").get();
   const stored = snapshot.exists ? snapshot.data() : {};
   return {
-    ...DEFAULT_AIRCON_AUTOMATION_SETTINGS,
     enabled: stored.enabled !== false,
+    preStartMinutes: automationMinute(stored.preStartMinutes, DEFAULT_AIRCON_AUTOMATION_SETTINGS.preStartMinutes),
+    postEndMinutes: automationMinute(stored.postEndMinutes, DEFAULT_AIRCON_AUTOMATION_SETTINGS.postEndMinutes),
+    safetyOffHour: DEFAULT_AIRCON_AUTOMATION_SETTINGS.safetyOffHour,
+    safetyOffMinute: DEFAULT_AIRCON_AUTOMATION_SETTINGS.safetyOffMinute,
+    extraSchedules: normaliseIotExtraSchedules(stored.extraSchedules),
     // 실제 기기 명령은 HeyHome API 정보와 기기 ID를 등록한 뒤 별도로 활성화한다.
     mode: "simulation",
   };
+}
+
+function dueIotScheduleOccurrence(schedule, now = new Date()) {
+  const today = dateInSeoul(now);
+  const candidateDates = [today, addDaysToDateText(today, -1)];
+  for (const date of candidateDates) {
+    const scheduledFor = new Date(`${date}T${schedule.time}:00+09:00`);
+    const elapsed = now.getTime() - scheduledFor.getTime();
+    if (elapsed >= -AIRCON_EVENT_EARLY_TOLERANCE_MS && elapsed <= AIRCON_EVENT_LATE_TOLERANCE_MS) {
+      return { date, scheduledFor };
+    }
+  }
+  return null;
 }
 
 async function dueAirConditionerReservations(field, offsetMinutes, now = new Date()) {
@@ -371,12 +451,12 @@ async function confirmedReservationsForDate(date) {
     .filter((reservation) => reservation.status === "confirmed");
 }
 
-async function shouldKeepAirConditionerOn(now = new Date()) {
+async function shouldKeepAirConditionerOn(now = new Date(), upcomingMinutes = 5) {
   const today = dateInSeoul(now);
   const dates = [addDaysToDateText(today, -1), today, addDaysToDateText(today, 1)];
   const reservations = (await Promise.all(dates.map(confirmedReservationsForDate))).flat();
   const nowMillis = now.getTime();
-  const upcomingLimit = nowMillis + (5 * 60000);
+  const upcomingLimit = nowMillis + (automationMinute(upcomingMinutes, 5) * 60000);
   return reservations.some((reservation) => {
     const startMillis = reservation.startAt?.toMillis?.() || parseReservationDate(reservation.date, reservation.startHour).getTime();
     const endMillis = reservation.endAt?.toMillis?.() || parseReservationDate(reservation.date, reservation.endHour).getTime();
@@ -417,6 +497,8 @@ async function runAirConditionerCommand({
   date = "",
   scheduledFor = null,
   skipReason = "",
+  scheduleTime = "",
+  scheduleScope = "",
 }) {
   const details = {
     command,
@@ -426,6 +508,8 @@ async function runAirConditionerCommand({
     bandName: String(reservation?.bandName || ""),
     date: String(date || reservation?.date || dateInSeoul()),
     scheduledFor: scheduledFor ? Timestamp.fromDate(scheduledFor) : Timestamp.now(),
+    scheduleTime: String(scheduleTime || ""),
+    scheduleScope: String(scheduleScope || ""),
   };
   const claim = await claimAirConditionerRun(runId, details);
   if (!claim.claimed) return { executed: false, duplicate: true };
@@ -457,6 +541,8 @@ function serializeAirConditionerRun(snapshot) {
     skipReason: String(data.skipReason || ""),
     bandName: String(data.bandName || ""),
     date: String(data.date || ""),
+    scheduleTime: String(data.scheduleTime || ""),
+    scheduleScope: String(data.scheduleScope || ""),
     scheduledFor: asIso(data.scheduledFor),
     executedAt: asIso(data.executedAt || data.claimedAt),
   };
@@ -567,12 +653,14 @@ exports.listMemberRoster = onCall(async (request) => {
 
 exports.getAirConditionerAutomation = onCall(async (request) => {
   await requireMainAdmin(request);
-  const [settings, runsSnapshot] = await Promise.all([
+  const [settings, integration, runsSnapshot] = await Promise.all([
     getAirConditionerAutomationSettings(),
+    getIotIntegrationSummary(),
     db.collection("airConditionerAutomationRuns").orderBy("claimedAt", "desc").limit(20).get(),
   ]);
   return {
     settings,
+    integration,
     runs: runsSnapshot.docs.map(serializeAirConditionerRun),
   };
 });
@@ -580,14 +668,61 @@ exports.getAirConditionerAutomation = onCall(async (request) => {
 exports.updateAirConditionerAutomation = onCall(async (request) => {
   const { auth } = await requireMainAdmin(request);
   if (typeof request.data?.enabled !== "boolean") badRequest("에어컨 자동화 사용 여부를 확인해 주세요.");
+  const integrationRef = db.collection("settings").doc("iotIntegration");
+  const [currentSettings, integrationSnapshot] = await Promise.all([
+    getAirConditionerAutomationSettings(),
+    integrationRef.get(),
+  ]);
+  const currentIntegration = integrationSnapshot.exists ? integrationSnapshot.data() : {};
+  const preStartMinutes = Number(request.data?.preStartMinutes ?? currentSettings.preStartMinutes);
+  const postEndMinutes = Number(request.data?.postEndMinutes ?? currentSettings.postEndMinutes);
+  if (!Number.isInteger(preStartMinutes) || preStartMinutes < 0 || preStartMinutes > 180
+    || !Number.isInteger(postEndMinutes) || postEndMinutes < 0 || postEndMinutes > 180) {
+    badRequest("합주 전·후 자동 실행 시간은 0~180분 사이로 설정해 주세요.");
+  }
+  const extraSchedules = request.data?.extraSchedules === undefined
+    ? currentSettings.extraSchedules
+    : normaliseIotExtraSchedules(request.data.extraSchedules, true);
+  const deviceId = String(request.data?.deviceId ?? currentIntegration.deviceId ?? "").trim();
+  if (deviceId.length > MAX_IOT_DEVICE_ID_LENGTH || /[\u0000-\u001f\u007f]/.test(deviceId)) {
+    badRequest("기기 ID를 확인해 주세요.");
+  }
+  const accessToken = String(request.data?.accessToken || "").trim();
+  if (accessToken && (accessToken.length < 8 || accessToken.length > MAX_IOT_TOKEN_LENGTH
+    || /[\u0000-\u001f\u007f\s]/.test(accessToken))) {
+    badRequest("헤이홈 API 토큰을 확인해 주세요.");
+  }
   const settings = {
     ...DEFAULT_AIRCON_AUTOMATION_SETTINGS,
     enabled: request.data.enabled,
+    preStartMinutes,
+    postEndMinutes,
+    extraSchedules,
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: auth.uid,
   };
-  await db.collection("settings").doc("airConditionerAutomation").set(settings, { merge: true });
-  return { settings: { ...DEFAULT_AIRCON_AUTOMATION_SETTINGS, enabled: request.data.enabled } };
+  const integration = {
+    provider: "heyhome",
+    deviceId,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: auth.uid,
+  };
+  if (accessToken) integration.accessToken = accessToken;
+  if (request.data?.clearToken === true && integrationSnapshot.exists) integration.accessToken = FieldValue.delete();
+  const batch = db.batch();
+  batch.set(db.collection("settings").doc("airConditionerAutomation"), settings, { merge: true });
+  batch.set(integrationRef, integration, { merge: true });
+  await batch.commit();
+  return {
+    settings: {
+      ...DEFAULT_AIRCON_AUTOMATION_SETTINGS,
+      enabled: request.data.enabled,
+      preStartMinutes,
+      postEndMinutes,
+      extraSchedules,
+    },
+    integration: await getIotIntegrationSummary(),
+  };
 });
 
 exports.testAirConditionerAutomation = onCall(async (request) => {
@@ -1458,7 +1593,7 @@ exports.updateReservation = onCall(async (request) => {
     const settings = await getAirConditionerAutomationSettings();
     if (settings.enabled) {
       const now = new Date();
-      const keepOn = await shouldKeepAirConditionerOn(now);
+      const keepOn = await shouldKeepAirConditionerOn(now, settings.preStartMinutes);
       for (const plan of previouslyActivatedPlans) {
         await runAirConditionerCommand({
           runId: `${plan.id}_reschedule_off_${plan.originalDate}_${plan.originalStartHour}`,
@@ -1534,7 +1669,7 @@ exports.cancelReservation = onCall(async (request) => {
     const automationWindowStarted = now.getTime() >= startMillis - (settings.preStartMinutes * 60000);
     const automationWindowOpen = now.getTime() < endMillis + (settings.postEndMinutes * 60000);
     if (settings.enabled && automationWindowStarted && automationWindowOpen) {
-      const keepOn = await shouldKeepAirConditionerOn(now);
+      const keepOn = await shouldKeepAirConditionerOn(now, settings.preStartMinutes);
       await runAirConditionerCommand({
         runId: `${reservationId}_cancellation_off`,
         command: "off",
@@ -1619,7 +1754,7 @@ exports.runAirConditionerAutomation = onSchedule(
 
     const endReservations = await dueAirConditionerReservations("endAt", -settings.postEndMinutes, now);
     if (endReservations.length) {
-      const keepOn = await shouldKeepAirConditionerOn(now);
+      const keepOn = await shouldKeepAirConditionerOn(now, settings.preStartMinutes);
       for (const reservation of endReservations) {
         const endDate = reservation.endAt?.toDate?.()
           || parseReservationDate(reservation.date, reservation.endHour);
@@ -1654,6 +1789,27 @@ exports.runAirConditionerAutomation = onSchedule(
           scheduledFor: new Date(`${safetyDate}T23:59:00+09:00`),
         });
       }
+    }
+
+    const reservationDayCache = new Map();
+    for (const schedule of settings.extraSchedules) {
+      const occurrence = dueIotScheduleOccurrence(schedule, now);
+      if (!occurrence) continue;
+      if (schedule.scope === "reservation_day") {
+        if (!reservationDayCache.has(occurrence.date)) {
+          reservationDayCache.set(occurrence.date, await confirmedReservationsForDate(occurrence.date));
+        }
+        if (!reservationDayCache.get(occurrence.date).length) continue;
+      }
+      await runAirConditionerCommand({
+        runId: `${occurrence.date}_extra_${schedule.id}`,
+        command: schedule.command,
+        reason: "extra_schedule",
+        date: occurrence.date,
+        scheduledFor: occurrence.scheduledFor,
+        scheduleTime: schedule.time,
+        scheduleScope: schedule.scope,
+      });
     }
   },
 );
