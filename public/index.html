@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="soundcheck-version" content="20261101.1" />
+    <meta name="soundcheck-version" content="20261101.2" />
     <meta name="theme-color" content="#07143d" />
     <meta name="application-name" content="Soundcheck" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,11 +14,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Gowun+Dodum&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20261101.1" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20261101.2" />
     <link rel="icon" href="./icons/soundcheck-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./icons/soundcheck-180.png" />
-    <link rel="stylesheet" href="./styles.css?v=20261101.1" />
-    <link rel="stylesheet" href="./rock-theme.css?v=20261101.1" />
+    <link rel="stylesheet" href="./styles.css?v=20261101.2" />
+    <link rel="stylesheet" href="./rock-theme.css?v=20261101.2" />
     <style id="bottom-navigation-critical">
       #bottomNavigation { position: fixed !important; z-index: 2147483000; left: 50%; right: auto; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); }
       @media (max-width: 600px) { #bottomNavigation { left: 0; right: 0; bottom: 0; transform: none; } }
@@ -187,6 +187,21 @@
       </section>
 
       <div id="memberAreaAnchor" hidden></div>
+      <section id="bandScheduleArea" class="band-schedule-area page-width" data-tab-view="bandplan" hidden aria-labelledby="bandScheduleTitle">
+        <div class="section-heading"><div><p class="eyebrow">PRIVATE BAND CALENDAR</p><h2 id="bandScheduleTitle">밴드 일정</h2><p class="band-schedule-copy">공연·모임·개인 일정을 밴드원끼리 공유하세요. 합주실 예약과는 별도로 관리됩니다.</p></div></div>
+        <div id="bandScheduleGuest" class="panel"><p>로그인하면 소속 밴드의 월별 일정을 볼 수 있습니다.</p><button id="bandScheduleLoginButton" class="button button-primary" type="button">로그인</button></div>
+        <div id="bandScheduleContent" class="hidden">
+          <div class="band-plan-controls">
+            <label id="bandScheduleBandField" class="hidden">조회 밴드<select id="bandScheduleBand"><option value="">전체 밴드</option></select></label>
+            <div class="band-plan-month"><button id="bandPlanPrevious" class="button button-ghost" type="button" aria-label="이전 달">←</button><input id="bandScheduleMonth" type="month" aria-label="밴드 일정 조회 월" /><button id="bandPlanNext" class="button button-ghost" type="button" aria-label="다음 달">→</button></div>
+            <button id="bandPlanRefresh" class="button button-ghost" type="button">새로고침</button><button id="bandPlanAdd" class="button button-primary" type="button">＋ 일정 등록</button>
+          </div>
+          <p id="bandScheduleStatus" class="band-schedule-copy" aria-live="polite"></p>
+          <div class="band-plan-calendar"><div class="band-plan-weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="bandPlanCalendarGrid" class="band-plan-grid"></div></div>
+          <div class="band-plan-day-heading"><h3 id="bandPlanDayTitle">날짜를 선택하세요</h3><button id="bandPlanDayAdd" class="text-button" type="button">이 날짜에 일정 추가</button></div>
+          <div id="bandPlanDayList" class="band-plan-day-list" aria-live="polite"></div>
+        </div>
+      </section>
       <section id="memberArea" class="member-area page-width hidden" data-tab-view="reservation" hidden aria-label="예약 관리">
         <div class="member-intro">
           <p class="eyebrow">MANAGER DESK</p>
@@ -392,6 +407,7 @@
       <button class="bottom-tab is-active" type="button" data-tab-target="home" aria-current="page"><span class="bottom-tab-icon">⌂</span><span>홈</span></button>
       <button class="bottom-tab" type="button" data-tab-target="schedule"><span class="bottom-tab-icon">▦</span><span>일정</span></button>
       <button class="bottom-tab" type="button" data-tab-target="availability"><span class="bottom-tab-icon">✓</span><span>조율</span></button>
+      <button class="bottom-tab" type="button" data-tab-target="bandplan"><span class="bottom-tab-icon">♫</span><span>밴드 일정</span></button>
       <button class="bottom-tab bottom-tab-primary" type="button" data-tab-target="reservation"><span class="bottom-tab-icon">＋</span><span>예약</span></button>
       <button class="bottom-tab" type="button" data-tab-target="equipment"><span class="bottom-tab-icon">⚙</span><span>장비</span></button>
       <button class="bottom-tab" type="button" data-tab-target="menu"><span class="bottom-tab-icon">≡</span><span>기타</span></button>
@@ -444,6 +460,22 @@
           </form>
         </details>
       </div>
+    </dialog>
+
+    <dialog id="bandPlanDialog" class="auth-dialog band-plan-dialog">
+      <button id="bandPlanClose" class="dialog-close" type="button" aria-label="닫기">×</button>
+      <p class="eyebrow">BAND SCHEDULE</p><h2 id="bandPlanDialogTitle">밴드 일정 등록</h2>
+      <form id="bandPlanForm" class="auth-form">
+        <label id="bandPlanEditBandField" class="hidden">공유할 밴드<select id="bandPlanEditBand"></select></label>
+        <label>일정 제목<input id="bandPlanTitle" maxlength="80" required placeholder="예: 공연, 녹음, 참석 불가" /></label>
+        <label>날짜<input id="bandPlanDate" type="date" required /></label>
+        <div class="form-row"><label>시작 시간 (선택)<input id="bandPlanTime" type="time" /></label><label>종료 시간 (선택)<input id="bandPlanEndTime" type="time" /></label></div>
+        <label>장소 (선택)<input id="bandPlanLocation" maxlength="100" /></label>
+        <label>내용 (선택)<textarea id="bandPlanNote" maxlength="1000"></textarea></label>
+        <p class="form-help">같은 밴드원과 메인 관리자만 확인·수정할 수 있습니다.</p>
+        <button class="button button-primary form-submit" type="submit">일정 저장</button>
+      </form>
+      <button id="bandPlanDelete" class="button button-danger form-submit hidden" type="button">일정 삭제</button>
     </dialog>
 
     <dialog id="profileDialog" class="auth-dialog profile-dialog">
@@ -523,6 +555,6 @@
       </div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./app.js?v=20261101.1"></script>
+    <script type="module" src="./app.js?v=20261101.2"></script>
   </body>
 </html>

@@ -31,7 +31,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20261101.1";
+const APP_VERSION = "20261101.2";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -107,6 +107,10 @@ const state = {
   equipmentReports: [],
   availabilityPolls: [],
   availabilityLoading: false,
+  bandScheduleEvents: [],
+  bandScheduleBands: [],
+  bandScheduleDate: "",
+  bandScheduleRequest: 0,
   memberRoster: [],
   equipmentPhotoDataUrl: "",
   usageStats: null,
@@ -139,7 +143,7 @@ function requiredElement(id) {
   return element;
 }
 
-const APP_TABS = new Set(["home", "schedule", "availability", "reservation", "equipment", "menu"]);
+const APP_TABS = new Set(["home", "schedule", "availability", "bandplan", "reservation", "equipment", "menu"]);
 const TAB_HASH_ALIASES = {
   "": "home",
   top: "home",
@@ -147,6 +151,7 @@ const TAB_HASH_ALIASES = {
   schedule: "schedule",
   availability: "availability",
   availabilityArea: "availability",
+  bandplan: "bandplan",
   reservation: "reservation",
   memberArea: "reservation",
   equipment: "equipment",
@@ -184,6 +189,7 @@ function setActiveTab(tab, options = {}) {
   }
   if (nextTab === "equipment" && state.profile) loadEquipmentReports();
   if (nextTab === "availability" && state.profile) loadAvailabilityPolls();
+  if (nextTab === "bandplan" && state.profile) loadBandSchedule();
   if (nextTab === "menu" && state.profile?.role === "main_admin") {
     loadMonthlyUsageStats();
     loadMemberRoster();
@@ -1354,6 +1360,113 @@ async function saveAvailabilityResponse(pollId, button) {
   }
 }
 
+function renderBandSchedule() {
+  const month = elements.bandScheduleMonth.value || monthForDate(todayInSeoul());
+  const range = monthRange(month);
+  if (!state.bandScheduleDate.startsWith(month)) state.bandScheduleDate = `${month}-01`;
+  const offset = new Date(`${month}-01T12:00:00+09:00`).getUTCDay();
+  const cells = Array.from({ length: offset }, () => '<div class="band-plan-blank" aria-hidden="true"></div>');
+  for (let day = 1; day <= range.days; day += 1) {
+    const date = `${month}-${pad(day)}`;
+    const events = state.bandScheduleEvents.filter((event) => event.date === date);
+    const preview = events.slice(0, 2).map((event) => `<small>${escapeHtml(event.title)}</small>`).join("");
+    cells.push(`<button class="band-plan-cell ${date === state.bandScheduleDate ? "is-selected" : ""} ${date === todayInSeoul() ? "is-today" : ""}" type="button" data-band-plan-date="${date}" aria-label="${escapeHtml(humanDate(date, true))} 일정 ${events.length}건"><time>${day}</time>${preview}${events.length > 2 ? `<em>+${events.length - 2}</em>` : ""}</button>`);
+  }
+  elements.bandPlanCalendarGrid.innerHTML = cells.join("");
+  elements.bandPlanDayTitle.textContent = humanDate(state.bandScheduleDate, true);
+  const dayEvents = state.bandScheduleEvents.filter((event) => event.date === state.bandScheduleDate);
+  elements.bandPlanDayList.innerHTML = dayEvents.length ? dayEvents.map((event) => `
+    <button class="band-plan-event" type="button" data-band-plan-event="${escapeHtml(event.id)}">
+      <span class="band-plan-event-time">${escapeHtml(event.time ? `${event.time}${event.endTime ? `–${event.endTime}` : ""}` : "종일")}</span>
+      <strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.bandName)}${event.location ? ` · ${escapeHtml(event.location)}` : ""}</span>
+      ${event.note ? `<p>${escapeHtml(event.note)}</p>` : ""}<small>${escapeHtml(event.authorName || "밴드원")} 등록 · 눌러서 수정</small>
+    </button>`).join("") : '<p class="empty-message">등록된 일정이 없습니다.</p>';
+}
+
+async function loadBandSchedule() {
+  if (!state.profile) return;
+  const requestNumber = ++state.bandScheduleRequest;
+  const uid = state.firebaseUser?.uid;
+  elements.bandScheduleStatus.textContent = "밴드 일정을 불러오는 중입니다.";
+  try {
+    const result = await call("listBandSchedule", {
+      month: elements.bandScheduleMonth.value || monthForDate(todayInSeoul()),
+      bandId: elements.bandScheduleBand.value,
+    });
+    if (requestNumber !== state.bandScheduleRequest || uid !== state.firebaseUser?.uid) return;
+    state.bandScheduleEvents = result.data.events || [];
+    state.bandScheduleBands = result.data.bands || [];
+    const selectedBand = elements.bandScheduleBand.value;
+    const options = state.bandScheduleBands.map((band) => `<option value="${escapeHtml(band.id)}">${escapeHtml(band.name)}</option>`).join("");
+    elements.bandScheduleBand.innerHTML = '<option value="">전체 밴드</option>' + options;
+    elements.bandScheduleBand.value = selectedBand;
+    elements.bandPlanEditBand.innerHTML = '<option value="">밴드 선택</option>' + options;
+    elements.bandScheduleStatus.textContent = `이 달의 공유 일정 ${state.bandScheduleEvents.length}건 · 같은 밴드원과 메인 관리자만 볼 수 있습니다.`;
+    renderBandSchedule();
+  } catch (error) {
+    if (requestNumber !== state.bandScheduleRequest || uid !== state.firebaseUser?.uid) return;
+    state.bandScheduleEvents = [];
+    renderBandSchedule();
+    elements.bandScheduleStatus.textContent = "밴드 일정을 불러오지 못했습니다. 새로고침해 주세요.";
+    showToast(errorMessage(error), true);
+  }
+}
+
+function openBandScheduleEvent(id = "") {
+  if (!state.profile) return openAuth();
+  const event = id ? state.bandScheduleEvents.find((item) => item.id === id) : null;
+  if (id && !event) return;
+  elements.bandPlanForm.reset();
+  elements.bandPlanDialog.dataset.eventId = event?.id || "";
+  elements.bandPlanDialogTitle.textContent = event ? "밴드 일정 수정" : "밴드 일정 등록";
+  elements.bandPlanEditBandField.classList.toggle("hidden", state.profile.role !== "main_admin");
+  elements.bandPlanEditBand.value = event?.bandId || elements.bandScheduleBand.value;
+  elements.bandPlanEditBand.disabled = Boolean(event);
+  elements.bandPlanTitle.value = event?.title || "";
+  elements.bandPlanDate.value = event?.date || state.bandScheduleDate || todayInSeoul();
+  elements.bandPlanTime.value = event?.time || "";
+  elements.bandPlanEndTime.value = event?.endTime || "";
+  elements.bandPlanLocation.value = event?.location || "";
+  elements.bandPlanNote.value = event?.note || "";
+  elements.bandPlanDelete.classList.toggle("hidden", !event);
+  elements.bandPlanDialog.showModal();
+}
+
+async function saveBandScheduleEvent(event) {
+  event.preventDefault();
+  const button = elements.bandPlanForm.querySelector('[type="submit"]');
+  button.disabled = true;
+  try {
+    const date = elements.bandPlanDate.value;
+    await call("saveBandScheduleEvent", {
+      id: elements.bandPlanDialog.dataset.eventId || "",
+      bandId: elements.bandPlanEditBand.value,
+      title: elements.bandPlanTitle.value.trim(), date,
+      time: elements.bandPlanTime.value, endTime: elements.bandPlanEndTime.value,
+      location: elements.bandPlanLocation.value.trim(), note: elements.bandPlanNote.value.trim(),
+    });
+    elements.bandPlanDialog.close();
+    elements.bandScheduleMonth.value = monthForDate(date);
+    state.bandScheduleDate = date;
+    await loadBandSchedule();
+    showToast("밴드 일정을 저장했습니다.");
+  } catch (error) { showToast(errorMessage(error), true); }
+  finally { button.disabled = false; }
+}
+
+async function deleteBandScheduleEvent() {
+  const id = elements.bandPlanDialog.dataset.eventId;
+  if (!id || !window.confirm("이 공유 일정을 삭제할까요?")) return;
+  elements.bandPlanDelete.disabled = true;
+  try {
+    await call("deleteBandScheduleEvent", { id });
+    elements.bandPlanDialog.close();
+    await loadBandSchedule();
+    showToast("밴드 일정을 삭제했습니다.");
+  } catch (error) { showToast(errorMessage(error), true); }
+  finally { elements.bandPlanDelete.disabled = false; }
+}
+
 function renderBands() {
   renderBandDirectory();
   if (state.profile?.role !== "main_admin") {
@@ -1396,6 +1509,9 @@ function renderProfile() {
   elements.availabilityMember.classList.toggle("hidden", !canUseAvailability);
   elements.availabilityRefreshButton.classList.toggle("hidden", !canUseAvailability);
   elements.adminArea.classList.toggle("hidden", profile?.role !== "main_admin");
+  elements.bandScheduleGuest.classList.toggle("hidden", isActive);
+  elements.bandScheduleContent.classList.toggle("hidden", !isActive);
+  elements.bandScheduleBandField.classList.toggle("hidden", profile?.role !== "main_admin");
   elements.reservationBandField.classList.toggle("hidden", profile?.role !== "main_admin");
   if (!canUseAvailability) {
     state.availabilityPolls = [];
@@ -2471,6 +2587,25 @@ async function loadMonthlyUsageStats() {
   }
 }
 function bindEvents() {
+  elements.bandScheduleLoginButton.addEventListener("click", openAuth);
+  elements.bandPlanAdd.addEventListener("click", () => openBandScheduleEvent());
+  elements.bandPlanDayAdd.addEventListener("click", () => openBandScheduleEvent());
+  elements.bandPlanClose.addEventListener("click", () => elements.bandPlanDialog.close());
+  elements.bandPlanForm.addEventListener("submit", saveBandScheduleEvent);
+  elements.bandPlanDelete.addEventListener("click", deleteBandScheduleEvent);
+  elements.bandPlanRefresh.addEventListener("click", loadBandSchedule);
+  elements.bandScheduleMonth.addEventListener("change", loadBandSchedule);
+  elements.bandScheduleBand.addEventListener("change", loadBandSchedule);
+  elements.bandPlanPrevious.addEventListener("click", () => { elements.bandScheduleMonth.value = shiftMonth(elements.bandScheduleMonth.value, -1); loadBandSchedule(); });
+  elements.bandPlanNext.addEventListener("click", () => { elements.bandScheduleMonth.value = shiftMonth(elements.bandScheduleMonth.value, 1); loadBandSchedule(); });
+  elements.bandPlanCalendarGrid.addEventListener("click", (event) => {
+    const date = event.target.closest("[data-band-plan-date]")?.dataset.bandPlanDate;
+    if (date) { state.bandScheduleDate = date; renderBandSchedule(); }
+  });
+  elements.bandPlanDayList.addEventListener("click", (event) => {
+    const id = event.target.closest("[data-band-plan-event]")?.dataset.bandPlanEvent;
+    if (id) openBandScheduleEvent(id);
+  });
   elements.refreshAppButton.addEventListener("click", refreshApplication);
   elements.openAuthButton.addEventListener("click", openAuth);
   elements.profileButton.addEventListener("click", openProfileDialog);
@@ -2676,6 +2811,8 @@ function initialise() {
   const today = todayInSeoul();
   elements.weekStart.value = today;
   elements.calendarMonth.value = monthForDate(today);
+  elements.bandScheduleMonth.value = monthForDate(today);
+  state.bandScheduleDate = today;
   elements.statsMonth.value = monthForDate(today);
   elements.reservationDate.value = today;
   elements.reservationDate.min = today;
@@ -2710,6 +2847,13 @@ function initialise() {
   window.setInterval(renderLiveTimetable, 60000);
   window.setInterval(loadLiveReservations, 120000);
   onAuthStateChanged(auth, async (user) => {
+    ++state.bandScheduleRequest;
+    state.bandScheduleEvents = [];
+    state.bandScheduleBands = [];
+    elements.bandScheduleBand.innerHTML = '<option value="">전체 밴드</option>';
+    elements.bandPlanEditBand.innerHTML = "";
+    elements.bandPlanDialog.close();
+    renderBandSchedule();
     state.firebaseUser = user;
     await refreshProfile();
     renderProfile();
@@ -2721,6 +2865,7 @@ function initialise() {
         syncPushSubscription({ silent: true }),
         loadEquipmentReports(),
         loadAvailabilityPolls(),
+        loadBandSchedule(),
         state.profile.role === "main_admin" ? loadMonthlyUsageStats() : Promise.resolve(),
         state.profile.role === "main_admin" ? loadMemberRoster() : Promise.resolve(),
         state.profile.role === "main_admin" ? loadAirConditionerAutomation() : Promise.resolve(),

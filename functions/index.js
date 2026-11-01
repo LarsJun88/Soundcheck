@@ -804,6 +804,88 @@ exports.updateOwnDisplayName = onCall(async (request) => {
   return { displayName };
 });
 
+exports.listBandSchedule = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const profile = await getProfile(auth.uid);
+  const range = validateMonthInput(request.data?.month);
+  const isAdmin = profile.role === "main_admin";
+  const bandId = isAdmin ? String(request.data?.bandId || "") : String(profile.bandId || "");
+  if (!isAdmin && !bandId) throw new HttpsError("permission-denied", "소속 밴드가 필요합니다.");
+  const bandsSnapshot = isAdmin ? await db.collection("bands").get() : null;
+  const bands = isAdmin ? bandsSnapshot.docs.map((item) => ({ id: item.id, name: String(item.data().name || "밴드") })) : [];
+  let query = db.collection("bandScheduleEvents");
+  // Band scope is applied on the server; client-supplied band IDs are ignored for members.
+  if (bandId) query = query.where("bandId", "==", bandId);
+  else query = query.where("date", ">=", range.from).where("date", "<=", range.to);
+  const snapshot = await query.get();
+  const events = snapshot.docs.map((item) => {
+    const data = item.data();
+    return {
+      id: item.id, bandId: String(data.bandId || ""), bandName: String(data.bandName || ""),
+      title: String(data.title || ""), date: String(data.date || ""),
+      time: String(data.time || ""), endTime: String(data.endTime || ""),
+      location: String(data.location || ""), note: String(data.note || ""),
+      authorName: String(data.authorName || ""),
+    };
+  }).filter((event) => event.date >= range.from && event.date <= range.to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title, "ko"));
+  return { events, bands };
+});
+
+exports.saveBandScheduleEvent = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const profile = await getProfile(auth.uid);
+  const data = request.data || {};
+  const isAdmin = profile.role === "main_admin";
+  const bandId = isAdmin ? String(data.bandId || "") : String(profile.bandId || "");
+  if (!bandId || bandId.includes("/")) badRequest("일정을 공유할 밴드를 선택해 주세요.");
+  const title = String(data.title || "").trim();
+  const date = String(data.date || "");
+  const time = String(data.time || "");
+  const endTime = String(data.endTime || "");
+  const location = String(data.location || "").trim();
+  const note = String(data.note || "").trim();
+  const validTime = (value) => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const dateValue = new Date(`${date}T12:00:00Z`);
+  if (!title || title.length > 80 || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    || Number.isNaN(dateValue.getTime()) || dateValue.toISOString().slice(0, 10) !== date
+    || !validTime(time) || !validTime(endTime) || (endTime && (!time || endTime <= time))
+    || location.length > 100 || note.length > 1000) badRequest("제목·날짜·시간을 확인해 주세요. 종료 시간은 시작 이후로 설정해 주세요.");
+  const eventId = String(data.id || "");
+  if (eventId && !/^[A-Za-z0-9_-]{1,128}$/.test(eventId)) badRequest("일정 정보가 올바르지 않습니다.");
+  const reference = eventId ? db.collection("bandScheduleEvents").doc(eventId) : db.collection("bandScheduleEvents").doc();
+  await db.runTransaction(async (transaction) => {
+    const band = await transaction.get(db.collection("bands").doc(bandId));
+    const existing = eventId ? await transaction.get(reference) : null;
+    if (!band.exists || band.data().active === false) throw new HttpsError("not-found", "활성 밴드를 찾지 못했습니다.");
+    if (eventId && !existing.exists) throw new HttpsError("not-found", "일정을 찾지 못했습니다.");
+    if (existing?.exists && existing.data().bandId !== bandId) throw new HttpsError("permission-denied", "다른 밴드의 일정은 변경할 수 없습니다.");
+    transaction.set(reference, {
+      bandId, bandName: String(band.data().name || "밴드"), title, date, time, endTime, location, note,
+      updatedAt: FieldValue.serverTimestamp(), updatedBy: auth.uid,
+      ...(!eventId ? { createdAt: FieldValue.serverTimestamp(), createdBy: auth.uid, authorName: String(profile.displayName || "밴드원") } : {}),
+    }, { merge: true });
+  });
+  return { id: reference.id };
+});
+
+exports.deleteBandScheduleEvent = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const profile = await getProfile(auth.uid);
+  const id = String(request.data?.id || "");
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) badRequest("일정 정보를 확인해 주세요.");
+  const reference = db.collection("bandScheduleEvents").doc(id);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    if (!snapshot.exists) throw new HttpsError("not-found", "일정을 찾지 못했습니다.");
+    if (profile.role !== "main_admin" && snapshot.data().bandId !== profile.bandId) {
+      throw new HttpsError("permission-denied", "다른 밴드의 일정은 삭제할 수 없습니다.");
+    }
+    transaction.delete(reference);
+  });
+  return { deleted: true };
+});
+
 exports.createAvailabilityPoll = onCall(async (request) => {
   const auth = requireAuth(request);
   const profile = await getProfile(auth.uid);

@@ -92,6 +92,11 @@ service cloud.firestore {
     match /equipmentReports/{reportId} {
       allow read, write: if false;
     }
+
+    // Private band calendars are accessed through server functions only.
+    match /bandScheduleEvents/{eventId} {
+      allow read, write: if false;
+    }
     // Push tokens and reminder delivery receipts contain private device data and
     // are only accessed by trusted Cloud Functions.
     match /pushTokens/{tokenId} {
