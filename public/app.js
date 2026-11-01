@@ -31,7 +31,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20261101.2";
+const APP_VERSION = "20261101.3";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -111,6 +111,7 @@ const state = {
   bandScheduleBands: [],
   bandScheduleDate: "",
   bandScheduleRequest: 0,
+  coordinationView: "calendar",
   memberRoster: [],
   equipmentPhotoDataUrl: "",
   usageStats: null,
@@ -143,7 +144,7 @@ function requiredElement(id) {
   return element;
 }
 
-const APP_TABS = new Set(["home", "schedule", "availability", "bandplan", "reservation", "equipment", "menu"]);
+const APP_TABS = new Set(["home", "schedule", "availability", "reservation", "equipment", "menu"]);
 const TAB_HASH_ALIASES = {
   "": "home",
   top: "home",
@@ -151,7 +152,8 @@ const TAB_HASH_ALIASES = {
   schedule: "schedule",
   availability: "availability",
   availabilityArea: "availability",
-  bandplan: "bandplan",
+  bandplan: "availability",
+  bandScheduleArea: "availability",
   reservation: "reservation",
   memberArea: "reservation",
   equipment: "equipment",
@@ -188,14 +190,29 @@ function setActiveTab(tab, options = {}) {
     window.history.replaceState(null, "", url);
   }
   if (nextTab === "equipment" && state.profile) loadEquipmentReports();
-  if (nextTab === "availability" && state.profile) loadAvailabilityPolls();
-  if (nextTab === "bandplan" && state.profile) loadBandSchedule();
+  if (nextTab === "availability") setCoordinationView(state.coordinationView);
   if (nextTab === "menu" && state.profile?.role === "main_admin") {
     loadMonthlyUsageStats();
     loadMemberRoster();
     loadAirConditionerAutomation();
   }
   if (scroll) window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+}
+
+function setCoordinationView(view, { load = true } = {}) {
+  state.coordinationView = view === "polls" ? "polls" : "calendar";
+  document.querySelectorAll("[data-coordination-view]").forEach((panel) => {
+    panel.hidden = panel.dataset.coordinationView !== state.coordinationView;
+  });
+  document.querySelectorAll("[data-coordination-target]").forEach((button) => {
+    const selected = button.dataset.coordinationTarget === state.coordinationView;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  if (load && state.profile) {
+    if (state.coordinationView === "polls") loadAvailabilityPolls();
+    else loadBandSchedule();
+  }
 }
 
 function setAdminSection(section) {
@@ -2587,6 +2604,10 @@ async function loadMonthlyUsageStats() {
   }
 }
 function bindEvents() {
+  elements.coordinationNavigation.addEventListener("click", (event) => {
+    const view = event.target.closest("[data-coordination-target]")?.dataset.coordinationTarget;
+    if (view) setCoordinationView(view);
+  });
   elements.bandScheduleLoginButton.addEventListener("click", openAuth);
   elements.bandPlanAdd.addEventListener("click", () => openBandScheduleEvent());
   elements.bandPlanDayAdd.addEventListener("click", () => openBandScheduleEvent());
