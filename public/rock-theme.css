@@ -453,7 +453,7 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
 .member-roster-heading { align-items: center; }
 .member-roster-actions { display: flex; align-items: center; gap: 13px; color: var(--muted); font: 700 11px "Gowun Dodum", sans-serif; }
 .member-roster-table { overflow: hidden; border: 1px solid var(--line); background: var(--cream); box-shadow: 6px 6px 0 rgba(7,20,61,.1); }
-.member-roster-header, .member-roster-row { display: grid; grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) 100px 110px 82px; align-items: center; gap: 12px; }
+.member-roster-header, .member-roster-row { display: grid; grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) 100px 110px 82px 124px; align-items: center; gap: 12px; }
 .member-roster-header { min-height: 43px; padding: 9px 15px; color: rgba(255,255,255,.68); background: #07143d; font: 700 10px "Gowun Dodum", sans-serif; }
 .member-roster-list { display: grid; }
 .member-roster-row { min-height: 68px; padding: 11px 15px; border-top: 1px solid var(--line); color: var(--ink); font-size: 12px; }
@@ -467,6 +467,7 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
 .member-roster-row time { color: var(--muted); font: 10px "DM Mono", monospace; }
 .member-roster-status { width: fit-content; padding: 4px 8px; border-radius: 999px; color: #fff; background: #23977b; font-size: 10px; font-weight: 700; }
 .member-roster-status.is-inactive { color: #68717d; background: #dce3e6; }
+.member-roster-account { display: flex; justify-content: flex-end; }.member-password-reset { min-height: 33px; padding: 6px 9px; border: 1px solid #8caab8; border-radius: 3px; color: #123a61; background: #edf7f8; font-size: 9px; font-weight: 800; }.member-password-reset:hover, .member-password-reset:focus-visible { color: #fff; border-color: var(--signal); background: var(--signal); outline: none; }.member-password-reset:disabled { opacity: .5; }.member-password-self { color: var(--muted); font-size: 9px; text-align: right; }
 .usage-stats { margin-top: 84px; padding-top: 72px; border-top: 1px solid var(--line); }
 .stats-heading { align-items: center; }.stats-month-label { min-width: 180px; margin: 0; }.stats-month-label input { margin-top: 4px; }
 .stats-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 11px; margin-bottom: 19px; }
@@ -501,9 +502,10 @@ h1 em { color: #83e3e2; text-shadow: 3px 3px 0 var(--signal); }
   .member-roster-heading { align-items: stretch; }.member-roster-actions { justify-content: space-between; }
   .member-roster-table { box-shadow: 4px 4px 0 rgba(7,20,61,.1); }
   .member-roster-header { display: none; }
-  .member-roster-row { min-height: 0; padding: 14px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "person status" "band role" "joined joined"; gap: 8px 12px; }
+  .member-roster-row { min-height: 0; padding: 14px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "person status" "band role" "joined joined" "account account"; gap: 8px 12px; }
   .member-roster-person { grid-area: person; }.member-roster-band { grid-area: band; }.member-roster-role { grid-area: role; text-align: right; }.member-roster-row time { grid-area: joined; }.member-roster-row time::before { content: "가입 "; }
   .member-roster-status { grid-area: status; }
+  .member-roster-account { grid-area: account; justify-content: stretch; }.member-password-reset { width: 100%; }.member-password-self { width: 100%; text-align: left; }
   .stats-heading { align-items: stretch; }.stats-month-label { width: 100%; }
   .stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }.stats-summary > article { min-height: 101px; padding: 13px; }.stats-summary strong { font-size: 26px; }
   .usage-row > div:first-child { align-items: flex-start; flex-direction: column; gap: 1px; }
@@ -715,4 +717,12 @@ main { min-height: calc(100dvh - 172px); }
   .iot-view-heading { align-items: flex-start; flex-direction: column; gap: 11px; }.iot-settings-grid { grid-template-columns: 1fr; gap: 13px; }.iot-settings-block { padding: 14px; }
   .iot-minute-grid { grid-template-columns: 1fr 1fr; }.iot-extra-section .panel-heading { align-items: stretch; }.iot-extra-section .button { width: 100%; }
   .iot-extra-schedule-row { grid-template-columns: 1fr 1fr 36px; }.iot-extra-schedule-row label:nth-child(3) { grid-column: 1 / 3; }.iot-schedule-remove { grid-column: 3; grid-row: 1 / 3; align-self: stretch; height: auto; }
+}
+
+/* ACCOUNT PASSWORD RESET · 20261101 */
+.profile-password-form { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--line); }.profile-password-form .panel-heading { margin-bottom: 10px; }.profile-password-form .panel-heading h3 { font-size: 14px; }
+.password-reset-dialog { width: min(500px, calc(100% - 28px)); }.temporary-password-field { margin-top: 19px; }.temporary-password-field input { color: #07143d; border: 2px solid var(--signal); background: #eaf9fa; font: 800 21px "DM Mono", monospace; letter-spacing: 1.4px; text-align: center; }.password-reset-warning { margin: 16px 0 0; padding: 11px 13px; border-left: 4px solid #e29c35; color: #694811; background: #fff2d8; font-size: 10.5px; line-height: 1.6; }
+
+@media (max-width: 600px) {
+  .temporary-password-field input { font-size: 17px; letter-spacing: .8px; }
 }

@@ -112,6 +112,19 @@ function requireVerifiedLoginId(request) {
   }
   return loginId;
 }
+
+function generateTemporaryPassword() {
+  const groups = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#%"];
+  const allCharacters = groups.join("");
+  const characters = groups.map((group) => group[crypto.randomInt(group.length)]);
+  while (characters.length < 14) characters.push(allCharacters[crypto.randomInt(allCharacters.length)]);
+  for (let index = characters.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+  return characters.join("");
+}
+
 function dateInSeoul(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -631,6 +644,7 @@ exports.listMemberRoster = onCall(async (request) => {
     const profile = item.data();
     const createdAtValue = profile.joinedAt || profile.createdAt;
     return {
+      uid: item.id,
       displayName: String(profile.displayName || "이름 없음").slice(0, 40),
       loginId: String(profile.loginId || "").slice(0, 40),
       role: profile.role === "main_admin" ? "main_admin" : "band_admin",
@@ -648,6 +662,39 @@ exports.listMemberRoster = onCall(async (request) => {
       active: members.filter((member) => member.active).length,
       inactive: members.filter((member) => !member.active).length,
     },
+  };
+});
+
+exports.resetMemberPassword = onCall(async (request) => {
+  const { auth } = await requireMainAdmin(request);
+  const targetUid = String(request.data?.uid || "").trim();
+  if (!targetUid || targetUid.length > 128 || /[^A-Za-z0-9_-]/.test(targetUid)) {
+    badRequest("비밀번호를 재설정할 가입자를 확인해 주세요.");
+  }
+  if (targetUid === auth.uid) {
+    throw new HttpsError("failed-precondition", "내 비밀번호는 상단의 내 정보에서 직접 변경해 주세요.");
+  }
+  const userReference = db.collection("users").doc(targetUid);
+  const profileSnapshot = await userReference.get();
+  if (!profileSnapshot.exists) throw new HttpsError("not-found", "가입자 계정을 찾지 못했습니다.");
+  const profile = profileSnapshot.data();
+  const temporaryPassword = generateTemporaryPassword();
+  try {
+    await admin.auth().updateUser(targetUid, { password: temporaryPassword });
+    await admin.auth().revokeRefreshTokens(targetUid);
+  } catch (error) {
+    console.error("Could not reset member password", { targetUid, code: error?.code || "unknown" });
+    if (error?.code === "auth/user-not-found") throw new HttpsError("not-found", "Firebase 로그인 계정을 찾지 못했습니다.");
+    throw new HttpsError("internal", "임시 비밀번호를 발급하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  await userReference.set({
+    passwordResetAt: FieldValue.serverTimestamp(),
+    passwordResetBy: auth.uid,
+  }, { merge: true });
+  return {
+    temporaryPassword,
+    loginId: String(profile.loginId || "").slice(0, 40),
+    displayName: String(profile.displayName || "가입자").slice(0, 40),
   };
 });
 

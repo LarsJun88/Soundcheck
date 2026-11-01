@@ -5,6 +5,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   addDoc,
@@ -30,7 +31,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const DEFAULT_ROOM = { openHour: 9, closeHour: 23, slotMinutes: 60 };
-const APP_VERSION = "20260921.2";
+const APP_VERSION = "20261101.1";
 const LOGIN_ID_STORAGE_KEY = "soundcheck.loginId";
 const TRASH_ALERT_ENABLED_KEY = "soundcheck.trashAlertsEnabled";
 const TRASH_ALERT_HISTORY_KEY = "soundcheck.trashAlertHistory";
@@ -464,6 +465,7 @@ function errorMessage(error) {
     "auth/weak-password": "비밀번호는 8자 이상으로 설정해 주세요.",
     "auth/user-not-found": "등록된 계정을 찾지 못했습니다.",
     "auth/invalid-email": "아이디 형식을 확인해 주세요.",
+    "auth/requires-recent-login": "보안을 위해 로그아웃한 뒤 다시 로그인하고 비밀번호를 변경해 주세요.",
   };
   return messages[error?.code] || error?.message || "처리 중 문제가 발생했습니다. 다시 시도해 주세요.";
 }
@@ -1421,6 +1423,8 @@ function openProfileDialog() {
   const band = state.bands.find((item) => item.id === profile.bandId);
   const roleText = profile.role === "main_admin" ? "메인 관리자" : (band?.name || "등록 밴드");
   elements.profileDisplayName.value = profile.displayName || "";
+  elements.profileNewPassword.value = "";
+  elements.profileNewPasswordConfirm.value = "";
   elements.profileAccountMeta.innerHTML = `
     <span>아이디</span><strong>${escapeHtml(profile.loginId || loginIdFromCurrentUser() || "확인 불가")}</strong>
     <span>소속</span><strong>${escapeHtml(roleText)}</strong>`;
@@ -1445,6 +1449,27 @@ async function handleProfileUpdate(event) {
     if (state.profile.role === "main_admin") await loadMemberRoster();
     else await loadAvailabilityPolls();
     showToast("닉네임을 변경했습니다.");
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function handleOwnPasswordUpdate(event) {
+  event.preventDefault();
+  if (!auth.currentUser || !state.profile) return openAuth();
+  const password = elements.profileNewPassword.value;
+  const confirmation = elements.profileNewPasswordConfirm.value;
+  if (password.length < 8) return showToast("새 비밀번호는 8자 이상으로 입력해 주세요.", true);
+  if (password !== confirmation) return showToast("새 비밀번호 확인이 일치하지 않습니다.", true);
+  const submitButton = elements.profilePasswordForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    await updatePassword(auth.currentUser, password);
+    elements.profilePasswordForm.reset();
+    elements.profileDialog.close();
+    showToast("비밀번호를 변경했습니다. 다음 로그인부터 새 비밀번호를 사용하세요.");
   } catch (error) {
     showToast(errorMessage(error), true);
   } finally {
@@ -2181,6 +2206,10 @@ function renderMemberRoster() {
     const roleLabel = member.role === "main_admin" ? "메인 관리자" : "밴드원";
     const bandName = member.role === "main_admin" ? "전체 밴드" : (member.bandName || "소속 없음");
     const statusLabel = member.active ? "활성" : "비활성";
+    const isSelf = member.uid === state.firebaseUser?.uid;
+    const accountAction = isSelf
+      ? '<span class="member-password-self">내 정보에서 변경</span>'
+      : `<button class="member-password-reset" type="button" data-reset-member-password="${escapeHtml(member.uid)}">비밀번호 재설정</button>`;
     return `
       <article class="member-roster-row ${member.active ? "" : "is-inactive"}">
         <div class="member-roster-person"><strong>${escapeHtml(member.displayName || "이름 없음")}</strong><span>${escapeHtml(member.loginId || "아이디 없음")}</span></div>
@@ -2188,6 +2217,7 @@ function renderMemberRoster() {
         <span class="member-roster-role">${roleLabel}</span>
         <time datetime="${escapeHtml(member.createdAt || "")}">${memberRosterDate(member.createdAt)}</time>
         <span class="member-roster-status ${member.active ? "" : "is-inactive"}">${statusLabel}</span>
+        <span class="member-roster-account">${accountAction}</span>
       </article>`;
   }).join("") : '<p class="empty-message">등록된 가입자가 없습니다.</p>';
 }
@@ -2203,6 +2233,36 @@ async function loadMemberRoster() {
     elements.memberRosterList.innerHTML = '<p class="empty-message">가입자 명단을 불러올 수 없습니다.</p>';
     showToast(errorMessage(error), true);
   }
+}
+
+async function resetMemberPassword(uid, button) {
+  const member = state.memberRoster.find((item) => item.uid === uid);
+  if (!member) return showToast("가입자 정보를 다시 불러와 주세요.", true);
+  if (!window.confirm(`${member.displayName}(${member.loginId})님의 비밀번호를 재설정할까요?\n기존 비밀번호는 즉시 사용할 수 없게 됩니다.`)) return;
+  button.disabled = true;
+  try {
+    const result = await call("resetMemberPassword", { uid });
+    elements.passwordResetMember.textContent = `${result.data.displayName} · 아이디 ${result.data.loginId}`;
+    elements.temporaryPasswordValue.value = result.data.temporaryPassword;
+    elements.passwordResetDialog.showModal();
+    window.setTimeout(() => elements.temporaryPasswordValue.select(), 0);
+  } catch (error) {
+    showToast(errorMessage(error), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function copyTemporaryPassword() {
+  const password = elements.temporaryPasswordValue.value;
+  if (!password) return;
+  try {
+    await navigator.clipboard.writeText(password);
+  } catch (error) {
+    elements.temporaryPasswordValue.select();
+    document.execCommand("copy");
+  }
+  showToast("임시 비밀번호를 복사했습니다.");
 }
 
 const AIRCON_REASON_LABELS = {
@@ -2416,6 +2476,13 @@ function bindEvents() {
   elements.profileButton.addEventListener("click", openProfileDialog);
   elements.closeProfileButton.addEventListener("click", () => elements.profileDialog.close());
   elements.profileForm.addEventListener("submit", handleProfileUpdate);
+  elements.profilePasswordForm.addEventListener("submit", handleOwnPasswordUpdate);
+  elements.closePasswordResetButton.addEventListener("click", () => elements.passwordResetDialog.close());
+  elements.copyTemporaryPasswordButton.addEventListener("click", copyTemporaryPassword);
+  elements.passwordResetDialog.addEventListener("close", () => {
+    elements.temporaryPasswordValue.value = "";
+    elements.passwordResetMember.textContent = "";
+  });
   elements.heroReservationButton.addEventListener("click", openReservationEntry);
   elements.reservationLoginButton.addEventListener("click", openAuth);
   elements.equipmentLoginButton.addEventListener("click", openAuth);
@@ -2539,6 +2606,10 @@ function bindEvents() {
     if (report?.photoDataUrl) window.open(report.photoDataUrl, "_blank", "noopener,noreferrer");
   });
   elements.memberRosterRefreshButton.addEventListener("click", loadMemberRoster);
+  elements.memberRosterList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-reset-member-password]");
+    if (button) resetMemberPassword(button.dataset.resetMemberPassword, button);
+  });
   elements.statsMonth.addEventListener("change", loadMonthlyUsageStats);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
